@@ -1,4 +1,4 @@
-from committee import Committee
+from model.committee import Committee
 
 class Protocol:
     def __init__(self, committeeSize, validators, delegators, rounds, setup, reward):
@@ -32,7 +32,19 @@ class Protocol:
 
     def updateDelegations(self):
         for delegator in self.delegators:
-                delegator.changeValidator(self.validators)
+            old = delegator.boundedValidator
+            new = delegator.chooseValidator(self.validators)
+            # if unchanged, do nothing
+            if new == old:
+                continue
+
+            # apply transition centrally
+            if old is not None:
+                old.removeDelegator(delegator)
+
+            if new is not None:
+                delegator.boundedValidator = new
+                new.addDelegator(delegator)
 
     def run(self):
         #committee = self.selectCommittee()
@@ -46,8 +58,3 @@ class Protocol:
                 self.blockchain.append(newBlock)
                 self.calculateRewards(committee)
                 self.calculateValidatorsScores()
-
-
-
-
-

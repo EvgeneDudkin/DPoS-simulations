@@ -1,5 +1,5 @@
 import random
-from block import Block
+from model.block import Block
 
 class Validator:
     def __init__ (self , id , stake):
@@ -9,10 +9,10 @@ class Validator:
         self.delegators = {}
         self.votingPower = self.stake
         self.totalReward = 0
-        self.score = 1000 # Validator score indicates chances of being selected by a deligator. Deafult everyone is 1000.
+        self.score = 1000 # Validator score indicates chances of being selected by a delegator. Default everyone is 1000.
         self.count = 0 # Number of times the validator was in the committee
-        self.dcount =0 # total number of delegators
-        self.overallRewars = 0 # reward for all voting power
+        self.dcount = 0 # total number of delegators
+        self.overallRewards = 0 # reward for all voting power
 
     def propose(self, committee):
         r = random.randint(0, 100)
@@ -42,7 +42,7 @@ class Validator:
         self.dcount += 1
 
     def updateReward(self, pool, reward, totalReward):
-        self.overallRewars += reward
+        self.overallRewards += reward
         self.totalReward += (self.stake / self.votingPower) * reward
         for delegator in self.delegators:
             if self.delegators[delegator] > 0:

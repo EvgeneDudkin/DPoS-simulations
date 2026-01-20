@@ -1,10 +1,8 @@
-from protocol import Protocol
-from committee import Committee
-from deligator import Delegator
-from validator import Validator
-from byzantine import Byzantine
-from cosmos import Cosmos
-from randomselect import RandomSelect
+from agents.byzantine import Byzantine
+from agents.validator import Validator
+from engine.protocol import Protocol
+from agents.delegator import Delegator
+from setups.randomselect import RandomSelect
 import matplotlib.pyplot as plt
 
 if __name__ == '__main__':
@@ -18,7 +16,7 @@ if __name__ == '__main__':
         delegators.append(Delegator(len(delegators), 50, 1, 0))
 
     committeeSize = 20
-    rounds = 50000
+    rounds = 500
     reward = 1000
 
     #setup = Cosmos()
@@ -31,7 +29,7 @@ if __name__ == '__main__':
 
     dcounts = [v.dcount/rounds for v in validators]
 
-    overallrewards = [v.overallRewars for v in validators]
+    overallrewards = [v.overallRewards for v in validators]
 
     print(dcounts)
     print(rewards)
@@ -60,4 +58,3 @@ if __name__ == '__main__':
 
     # Display the plot
     plt.show()
-

@@ -1,4 +1,3 @@
-from validator import Validator
 class Committee:
     def __init__(self, size, setup):
         self.size = size
@@ -38,7 +37,7 @@ class Committee:
         self.chooseProposer()
         newBlock = self.proposer.propose(self)
         for v in self.validators:
-            self.votes[v] = v.sign(newBlock)
+             self.votes[v] = v.sign(newBlock)
         self.selectedVoters = self.proposer.selectVoters(self.votes)
         if newBlock.isConfirmed(self.validators, self.selectedVoters):
             return newBlock

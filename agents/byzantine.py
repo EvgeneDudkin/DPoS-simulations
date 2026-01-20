@@ -1,4 +1,4 @@
-from validator import Validator
+from agents.validator import Validator
 
 class Byzantine (Validator):
     def __init__(self, id , stake, victims, omission):
