@@ -7,9 +7,9 @@ class Byzantine (Validator):
         self.omission = omission
         pass
 
-    def selectVoters(self, votes):
+    def select_voters(self, votes):
         if not self.omission:
-            return super().selectVoters(votes)
+            return super().select_voters(votes)
         voters = []
         for voter in votes:
             if voter not in self.victims:

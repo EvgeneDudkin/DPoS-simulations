@@ -6,11 +6,11 @@ class Setup(ABC):
         self.bonus = 0
         self.variational = False
 
-    def chooseProposer(self, validators):
+    def choose_proposer(self, validators):
         # shared logic
         return random.choice(validators)
 
-    def selectCommittee(self, committee, pool):
+    def select_committee(self, committee, pool):
         # template method
         selected = self.select_validators(pool, committee.size)
 

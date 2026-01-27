@@ -8,7 +8,7 @@ class RandomSelect(Setup):
         self.variational = False
 
     def select_validators(self, pool, size):
-        weights = [validator.votingPower for validator in pool]
+        weights = [validator.voting_power for validator in pool]
         selected = set()
 
         while len(selected) < size:

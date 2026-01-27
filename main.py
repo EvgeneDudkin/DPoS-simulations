@@ -3,39 +3,44 @@ from agents.validator import Validator
 from engine.protocol import Protocol
 from agents.delegator import Delegator
 from setups.randomselect import RandomSelect
+from engine.world import World
 import matplotlib.pyplot as plt
+from engine.initializer import initialize_world
 
 if __name__ == '__main__':
-    validators = []
-    delegators = []
-    for i in range(70):
-        validators.append(Validator(len(validators), 200))
-    for i in range(30):
-        validators.append(Byzantine(len(validators), 200, [validators[0]], False))
-    for i in range(1000):
-        delegators.append(Delegator(len(delegators), 50, 1, 0))
-
-    committeeSize = 20
+    committee_size = 20
     rounds = 500
-    reward = 1000
+    reward = 0.0001
 
     #setup = Cosmos()
     setup = RandomSelect()
-
-    protocol = Protocol(committeeSize, validators, delegators, rounds, setup, reward)
+    world = initialize_world(
+        num_validators=100,
+        num_pools=10,
+        num_delegators=1000,
+        setup=setup,
+        reward_per_round=reward,
+        validator_frac=0.8,
+        max_validator_stake=0.33,
+        aggressiveness=1,
+        loyalty=0.0,
+        pool_selection_weighted=True,
+        verbose=True
+    )
+    protocol = Protocol(committee_size, world, rounds)
     protocol.run()
 
-    rewards = [v.totalReward for v in validators]
+    rewards = [v.total_reward for v in world.validators]
 
-    dcounts = [v.dcount/rounds for v in validators]
+    dcounts = [v.dcount / rounds for v in world.validators]
 
-    overallrewards = [v.overallRewards for v in validators]
+    overall_rewards = [v.overall_rewards for v in world.validators]
 
     print(dcounts)
     print(rewards)
-    print(overallrewards)
+    print(overall_rewards)
 
-    # Generate x-axis values (0 to 99 in this case)
+    # Generate x-axis values
     x = range(len(rewards))
 
     # Create the bar plot

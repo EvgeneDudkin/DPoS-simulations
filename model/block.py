@@ -5,12 +5,12 @@ class Block:
         self.proposer = proposer
         self.committee = committee
 
-    def isValid(self):
+    def is_valid(self):
         return True
 
-    def isConfirmed(self , validators, selectedVoters):
-        totalVotingPower = sum(v.votingPower for v in validators)
-        selectedVotingPower = sum(sv.votingPower for sv in selectedVoters)
-        if (selectedVotingPower/totalVotingPower) > (2 / 3):
+    def is_confirmed(self, validators, selected_voters):
+        total_voting_power = sum(v.voting_power for v in validators)
+        selected_voting_power = sum(sv.voting_power for sv in selected_voters)
+        if (selected_voting_power/total_voting_power) > (2 / 3):
             return True
         return False
