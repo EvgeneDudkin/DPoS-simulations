@@ -172,7 +172,11 @@ def print_sanity_checks(world, max_validator_stake):
     print(f"  Delegator stake:             {total_delegator_stake:.6f}")
 
     max_v_stake = max(v.stake for v in world.validators)
+    min_v_stake = max(v.stake for v in world.validators)
+
     print(f"Max validator self-stake:     {max_v_stake:.6f}")
+    print(f"Min validator self-stake:     {min_v_stake:.6f}")
+    
     print(f"Stake cap respected:          {max_v_stake <= max_validator_stake}")
 
     total_voting_power = sum(v.voting_power for v in world.validators)
@@ -190,5 +194,10 @@ def print_sanity_checks(world, max_validator_stake):
         d for d in world.delegators if d.bounded_validator is None
     ]
     print(f"Delegators without validator: {len(undelegated)}")
+
+    max_d_stake = max(v.stake for v in world.delegators)
+    min_d_stake = min(v.stake for v in world.delegators)
+    print(f"Max delegator stake:     {max_d_stake:.6f}")
+    print(f"Min delegator stake:     {min_d_stake:.6f}")
 
     print("==========================")
