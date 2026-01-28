@@ -75,7 +75,9 @@ class Metrics:
             "top_gainers": top_gainers,
             "top_losers": top_losers,
             "migration_rate" : migration_rate,
-            "reward_delta_by_id" : reward_delta_by_id        }
+            "reward_delta_by_id" : reward_delta_by_id,
+            "pools_apr" : [(v.id, v.apr) for v in world.pools()]
+        }
 
         if self.keep_history:
             self.history.append(snap)
@@ -102,6 +104,7 @@ class Metrics:
         print(f"Migration rate: {snap['migration_rate']}")
         print(f"Top10 window rewards (all):  ",  ", ".join([f"{vid}:{amt:.6f}" for vid, amt in sorted(snap["reward_delta_by_id"].items(), key=lambda x: x[1], reverse=True)[:10]]))
         print(f"Top10 window rewards (pools):  ",  ", ".join([f"{vid}:{amt:.6f}" for vid, amt in sorted([(vid, delta) for vid, delta in snap["reward_delta_by_id"].items() if vid in pool_ids], key=lambda x: x[1], reverse=True)[:10]]))
+        print(f"Top10 APRs (pools):  ",  ", ".join([f"{vid}:{apr:.6f}" for vid, apr in sorted(snap["pools_apr"], key=lambda x: x[1], reverse=True)[:10]]))
 
         print("===============")
 
@@ -113,6 +116,11 @@ class Metrics:
         self.window_migrations_executed = 0
         self.window_gained.clear()
         self.window_lost.clear()
+
+    def _top_pools_by_apr(self, world, k=10):
+        pools = world.pools()
+        ranked = sorted(pools, key=lambda v: getattr(v, "apr", 0.0), reverse=True)[:k]
+        return [(v.id, v.apr) for v in ranked]
 
     def _top_voting_power(self, validators, total,  k):
         if k > len(validators):

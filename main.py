@@ -9,8 +9,11 @@ from engine.initializer import initialize_world
 
 if __name__ == '__main__':
     committee_size = 20
-    rounds = 5000
-    reward = 0.0001
+    rounds = 50000
+    reward = 4.26e-7
+    migration_delay_rounds = 1100 # 5 days worth of epochs
+    apr_window = 1575  # 7 days worth of epochs
+    rounds_per_year = 82125 # 1 year worth of epochs
 
     #setup = Cosmos()
     setup = RandomSelect()
@@ -25,9 +28,10 @@ if __name__ == '__main__':
         aggressiveness=1,
         loyalty=0.0,
         pool_selection_weighted=True,
-        verbose=True
+        verbose=True,
+        apr_window=apr_window
     )
-    protocol = Protocol(committee_size, world, rounds)
+    protocol = Protocol(committee_size, world, rounds, migration_delay_rounds, rounds_per_year)
     protocol.run()
 
     rewards = [v.total_reward for v in world.validators]

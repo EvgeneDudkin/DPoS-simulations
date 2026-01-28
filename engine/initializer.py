@@ -20,34 +20,43 @@ def _random_positive_vector(n, alpha=1.0):
     return [x / s for x in xs]
 
 
-def _capped_shares(total, n, cap, alpha=1.0, max_iter=10_000):
+def _get_shares(total, n, max_stake, min_stake=0.001, alpha=1.0, max_iter=10_000):
     """
     Returns n nonnegative shares that sum to `total` and each <= cap.
     Simple rejection + fallback redistribution.
     """
-    if n * cap < total - 1e-12:
-        raise ValueError(f"Impossible: n*cap={n * cap:.4f} < total={total:.4f}")
+    if min_stake > max_stake:
+        raise ValueError("min_stake cannot exceed max_stake")
+
+    if n * min_stake > total + 1e-12:
+        raise ValueError(f"Impossible: n*min_stake={n * min_stake:.6f} > total={total:.6f}")
+
+    if n * max_stake < total - 1e-12:
+        raise ValueError(f"Impossible: n*max_stake={n * max_stake:.6f} < total={total:.6f}")
+
+    remaining = total - n * min_stake
+    cap_remaining = max_stake - min_stake
 
     # Rejection sampling is fine for thesis-scale n.
     for _ in range(max_iter):
         shares_unit = _random_positive_vector(n, alpha=alpha)
-        shares = [total * x for x in shares_unit]
-        if max(shares) <= cap + 1e-12:
-            return shares
+        shares = [remaining * x for x in shares_unit]
+        if max(shares) <= cap_remaining  + 1e-12:
+            return [min_stake + r for r in shares]
 
-    # Fallback: cap then renormalize remaining mass iteratively
-    shares = [total * x for x in _random_positive_vector(n, alpha=alpha)]
+    # Fallback: max_stake then renormalize remaining mass iteratively
+    shares = [remaining  * x for x in _random_positive_vector(n, alpha=alpha)]
     for _ in range(n * 5):
-        over = [i for i, s in enumerate(shares) if s > cap]
+        over = [i for i, s in enumerate(shares) if s > cap_remaining]
         if not over:
             break
-        excess = sum(shares[i] - cap for i in over)
+        excess = sum(shares[i] - cap_remaining for i in over)
         for i in over:
-            shares[i] = cap
-        under = [i for i, s in enumerate(shares) if s < cap - 1e-15]
+            shares[i] = cap_remaining
+        under = [i for i, s in enumerate(shares) if s < cap_remaining - 1e-15]
         if not under:
             break
-        under_room = [cap - shares[i] for i in under]
+        under_room = [cap_remaining - shares[i] for i in under]
         room_sum = sum(under_room)
         if room_sum <= 0:
             break
@@ -57,9 +66,9 @@ def _capped_shares(total, n, cap, alpha=1.0, max_iter=10_000):
     # final normalization to correct tiny numerical drift
     s = sum(shares)
     if s > 0:
-        shares = [x * (total / s) for x in shares]
-    # ensure cap (numerical)
-    shares = [min(x, cap) for x in shares]
+        shares = [x * (remaining / s) for x in shares]
+    # ensure max_stake (numerical)
+    shares = [min_stake + x for x in shares]
     return shares
 
 # Delegator stakes are sampled from a lognormal distribution
@@ -91,6 +100,7 @@ def initialize_world(
         loyalty: float = 0.0,
         pool_selection_weighted: bool = True,
         verbose: bool = False,
+        apr_window: int = 1000
 ):
     """
     Creates validators + delegators with normalized total stake = 1.0.
@@ -111,13 +121,13 @@ def initialize_world(
     delegators_total = total_stake - validators_total
 
     # validator self-bonds (capped)
-    v_stakes = _capped_shares(validators_total, num_validators, max_validator_stake, alpha=1.0)
+    v_stakes = _get_shares(validators_total, num_validators, max_validator_stake, alpha=1.0)
     #v_stakes.sort(reverse=True)
 
     validators = []
     for i in range(num_validators):
         is_pool = (i < num_pools)  # simplest: first num_pools are pools
-        validators.append(Validator(i, v_stakes[i], is_pool=is_pool))
+        validators.append(Validator(i, v_stakes[i], is_pool=is_pool, apr_window=apr_window))
 
     # delegator stakes (heavy-tailed, normalized)
     d_stakes = _lognormal_stakes(delegators_total, num_delegators, mu=delegator_mu, sigma=delegator_sigma)

@@ -3,13 +3,13 @@ from engine.rewards import distribute_committee_rewards
 from engine.metrics import Metrics
 
 class Protocol:
-    def __init__(self, committee_size, world, rounds, migration_delay_rounds=10):
+    def __init__(self, committee_size, world, rounds, migration_delay_rounds, rounds_per_year):
         self.committee_size = committee_size
         self.world = world
         self.rounds = rounds
         self.migration_delay_rounds = migration_delay_rounds
         self.metrics = Metrics(print_frequency=1000)
-
+        self.rounds_per_year = rounds_per_year
     def select_committee(self):
         committee = Committee(self.committee_size, self.world.setup)
         self.world.setup.select_committee(committee, self.world.validators)
@@ -68,6 +68,9 @@ class Protocol:
 
                 self.calculate_rewards(committee)
                 self.metrics.on_rewards_distributed(self.world.reward)
+
+                for v in self.world.validators:
+                    v.update_apr(self.rounds_per_year)
 
                 self.calculate_validators_scores()
 
