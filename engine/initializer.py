@@ -112,6 +112,7 @@ def initialize_world(
 
     # validator self-bonds (capped)
     v_stakes = _capped_shares(validators_total, num_validators, max_validator_stake, alpha=1.0)
+    #v_stakes.sort(reverse=True)
 
     validators = []
     for i in range(num_validators):

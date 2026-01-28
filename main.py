@@ -9,7 +9,7 @@ from engine.initializer import initialize_world
 
 if __name__ == '__main__':
     committee_size = 20
-    rounds = 500
+    rounds = 5000
     reward = 0.0001
 
     #setup = Cosmos()
