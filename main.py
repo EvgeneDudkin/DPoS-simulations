@@ -31,7 +31,7 @@ if __name__ == '__main__':
         verbose=True,
         apr_window=apr_window
     )
-    protocol = Protocol(committee_size, world, rounds, migration_delay_rounds, rounds_per_year)
+    protocol = Protocol(committee_size, world, rounds, migration_delay_rounds, rounds_per_year, apr_window)
     protocol.run()
 
     rewards = [v.total_reward for v in world.validators]

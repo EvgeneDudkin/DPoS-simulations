@@ -1,13 +1,14 @@
 import random
 
 class Delegator:
-    def __init__ (self , id , stake, aggressiveness = 1, loyalty = 0):
+    def __init__ (self , id , stake, aggressiveness = 1, loyalty = 0, apr_gap_threshold = 0.02):
         self.id = id
         self.stake = stake
         self.bounded_validator = None
         self.total_reward = 0
         self.aggressiveness = aggressiveness #Describes how aggressive delegators are in terms of selecting the best validator.
         self.loyalty = loyalty #Describes delegators loyalty. Should be between 0 and 1. Bigger loyalty indicates that the delegator changes the validator less often.
+        self.apr_gap_threshold = apr_gap_threshold
 
     # def delegate_to(self, validator):
     #     self.bounded_validator = validator
@@ -19,24 +20,48 @@ class Delegator:
         delegator_share = (self.stake / self.bounded_validator.voting_power) * validator_share
         return delegator_share
 
-    def choose_validator(self, pool):
-        changing_chance = random.randint(1, 100)
-        if changing_chance <= (self.loyalty * 100):
-            return self.bounded_validator  # stay
-
-        weights = [validator.score ** self.aggressiveness for validator in pool]
-        return random.choices(pool, weights=weights)[0]
-
-    # def changeValidator(self, pool):
-    #     changingChance = random.randint(1, 100)
-    #     if changingChance <= (self.loyalty * 100):
-    #         return
-    #     if self.boundedValidator is not None:
-    #         self.boundedValidator.removeDelegator(self)
-    #     weights = [validator.score**self.aggressiveness for validator in pool]
-    #     validator = random.choices(pool, weights=weights)[0]
-    #     self.boundedValidator = validator
-    #     self.boundedValidator.addDelegator(self)
+    # def choose_validator(self, pool):
+    #     changing_chance = random.randint(1, 100)
+    #     if changing_chance <= (self.loyalty * 100):
+    #         return self.bounded_validator  # stay
+    #
+    #     weights = [validator.score ** self.aggressiveness for validator in pool]
+    #     return random.choices(pool, weights=weights)[0]
 
     def update_reward(self, pool, reward, total_reward):
         self.total_reward += reward
+
+    def choose_validator_by_apr(self, pool):
+        """
+        Choose based on APR:
+        - stay unless best APR exceeds current APR by more than threshold
+        - even if dissatisfied, switch only with probability (1 - loyalty)
+        - when switching, choose among pools weighted by APR^aggressiveness
+        """
+        # If not delegated yet, pick a pool biased by APR
+        if self.bounded_validator is None:
+            return self._pick_weighted_by_apr(pool)
+
+        current = self.bounded_validator
+        current_apr = current.apr
+
+        # Find the best APR pool
+        best = max(pool, key=lambda v: v.apr)
+        best_apr = best.apr
+
+        # Only consider switching if improvement is meaningful
+        if (best_apr - current_apr) <= self.apr_gap_threshold:
+            return current
+
+        # Inertia: not everyone switches immediately
+        if random.random() < self.loyalty:
+            return current
+
+        # Switch, but not always deterministically to the best
+        return self._pick_weighted_by_apr(pool)
+
+    def _pick_weighted_by_apr(self, pool):
+        # Ensure positive weights even if APR is 0
+        eps = 1e-12
+        weights = [(max(v.apr, 0.0) + eps) ** self.aggressiveness for v in pool]
+        return random.choices(pool, weights=weights, k=1)[0]

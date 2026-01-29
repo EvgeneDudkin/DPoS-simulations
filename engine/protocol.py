@@ -3,13 +3,15 @@ from engine.rewards import distribute_committee_rewards
 from engine.metrics import Metrics
 
 class Protocol:
-    def __init__(self, committee_size, world, rounds, migration_delay_rounds, rounds_per_year):
+    def __init__(self, committee_size, world, rounds, migration_delay_rounds, rounds_per_year, update_delegation_warm_up_rounds):
         self.committee_size = committee_size
         self.world = world
         self.rounds = rounds
         self.migration_delay_rounds = migration_delay_rounds
         self.metrics = Metrics(print_frequency=1000)
         self.rounds_per_year = rounds_per_year
+        self.update_delegation_warm_up_rounds = update_delegation_warm_up_rounds
+
     def select_committee(self):
         committee = Committee(self.committee_size, self.world.setup)
         self.world.setup.select_committee(committee, self.world.validators)
@@ -38,7 +40,7 @@ class Protocol:
                 continue
 
             old = delegator.bounded_validator
-            new = delegator.choose_validator(pool)
+            new = delegator.choose_validator_by_apr(pool)
 
             # if unchanged, do nothing
             if new == old:
@@ -57,7 +59,8 @@ class Protocol:
             executed = self.world.process_migrations(i)  # execute scheduled moves
             self.metrics.on_migrations_executed(executed)
 
-            self.update_delegations() # schedule new moves (not apply instantly)
+            if self.world.round_index > self.update_delegation_warm_up_rounds: # need to wait some time
+                self.update_delegations() # schedule new moves (not apply instantly)
 
             committee = self.select_committee()
             self.metrics.on_block_attempt()
