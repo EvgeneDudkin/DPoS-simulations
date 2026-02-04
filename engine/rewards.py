@@ -15,5 +15,4 @@ def distribute_committee_rewards(committee, reward_amount):
             else:
                 share += bonus
 
-        # Keep same call signature as before (even if totalReward is redundant)
         validator.update_reward(committee.validators, share, reward)

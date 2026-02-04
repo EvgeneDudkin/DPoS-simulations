@@ -6,10 +6,11 @@ from setups.randomselect import RandomSelect
 from engine.world import World
 import matplotlib.pyplot as plt
 from engine.initializer import initialize_world
+from engine.plots import store_pool_stats_plot, store_pool_netflow_bars_plots
 
 if __name__ == '__main__':
-    committee_size = 20
-    rounds = 50000
+    committee_size = 100
+    rounds = 100000
     reward = 4.26e-7
     migration_delay_rounds = 1100 # 5 days worth of epochs
     apr_window = 1575  # 7 days worth of epochs
@@ -34,36 +35,22 @@ if __name__ == '__main__':
     protocol = Protocol(committee_size, world, rounds, migration_delay_rounds, rounds_per_year, apr_window)
     protocol.run()
 
-    rewards = [v.total_reward for v in world.validators]
+    # visualization
+    history = protocol.metrics.history
+    pool_ids = [v.id for v in world.pools()]
+    # APR
+    store_pool_stats_plot(history, pool_ids, key="apr",
+                    title="Pool APR over time",
+                    ylabel="APR", filename="apr_over_time.png")
 
-    dcounts = [v.dcount / rounds for v in world.validators]
+    store_pool_stats_plot(history, pool_ids, key="vp_share",
+                    title="Pool market share (voting power share) over time",
+                    ylabel="VP share",
+                    filename="vp_share_over_time.png")
 
-    overall_rewards = [v.overall_rewards for v in world.validators]
+    store_pool_stats_plot(history, pool_ids, key="delegators",
+                    title="Number of delegators over time",
+                    ylabel="#delegators",
+                    filename="delegators_over_time.png")
 
-    print(dcounts)
-    print(rewards)
-    print(overall_rewards)
-
-    # Generate x-axis values
-    x = range(len(rewards))
-
-    # Create the bar plot
-    plt.bar(x, rewards)
-
-    # Add labels and title
-    plt.xlabel('Item')
-    plt.ylabel('Reward')
-    plt.title('Comparison of Rewards')
-
-    # Display the plot
-    plt.show()
-
-    plt.bar(x, dcounts)
-
-    # Add labels and title
-    plt.xlabel('Validators')
-    plt.ylabel('Average number of delegators per round')
-    plt.title('Comparison')
-
-    # Display the plot
-    plt.show()
+    store_pool_netflow_bars_plots(history, pool_ids)

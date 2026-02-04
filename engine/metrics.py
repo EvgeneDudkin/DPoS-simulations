@@ -40,7 +40,6 @@ class Metrics:
         validators = world.validators
         total_vp = sum(v.voting_power for v in validators)
         all_top_vp = self._top_voting_power(world.validators, total_vp, k=10)
-        pool_top_vp = self._top_voting_power(world.pools(), total_vp, k=10)
 
         def top_k(d, k):
             return sorted(d.items(), key=lambda x: x[1], reverse=True)[:k]
@@ -63,11 +62,13 @@ class Metrics:
         # rewards
         reward_delta_by_id = self._compute_window_reward_deltas(world.validators)
 
+        # pools stats
+        pool_stats = self._build_pool_stats(world, total_vp, reward_delta_by_id)
+
         snap = {
             "round": round_index,
             "total_voting_power": total_vp,
             "all_top_vp": all_top_vp,
-            "pool_top_vp" : pool_top_vp,
             "pending_migrations": pending,
             "window_confirm_rate": confirm_rate,
             "window_rewards": self.window_rewards_distributed,
@@ -76,7 +77,7 @@ class Metrics:
             "top_losers": top_losers,
             "migration_rate" : migration_rate,
             "reward_delta_by_id" : reward_delta_by_id,
-            "pools_apr" : [(v.id, v.apr) for v in world.pools()]
+            "pool_stats": pool_stats
         }
 
         if self.keep_history:
@@ -90,11 +91,19 @@ class Metrics:
         pool_ids = {v.id for v in world.pools()}
         snap = self.snapshot(world, round_index)
 
+        pool_stats = snap["pool_stats"]
+
+        pools_top10_apr = sorted(pool_stats.items(), key=lambda x: x[1]["apr"], reverse=True)[:10]
+        pools_top10_delegators = sorted(pool_stats.items(), key=lambda x: x[1]["delegators"], reverse=True)[:10]
+        pools_top10_rewards = sorted(pool_stats.items(), key=lambda x: x[1]["reward_delta"], reverse=True)[:10]
+        pools_top10_vp = sorted(pool_stats.items(), key=lambda x: x[1]["voting_power"], reverse=True)[:10]
+        pools_top10_vp_share = sorted(pool_stats.items(), key=lambda x: x[1]["vp_share"], reverse=True)[:10]
+        pools_top10_net_flow = sorted(pool_stats.items(), key=lambda x: x[1]["net_flow"], reverse=True)[:10]
+
         print("=== METRICS ===")
         print(f"Round: {snap['round']}")
         print(f"Total VP: {snap['total_voting_power']:.6f}")
         print(f"Top VP share (all): ", ", ".join([f"{vid}:{vp:.3f}" for vid, vp in snap["all_top_vp"]]))
-        print(f"Top VP share (pools): ", ", ".join([f"{vid}:{vp:.3f}" for vid, vp in snap["pool_top_vp"]]))
         print(f"Pending migrations: {snap['pending_migrations']}")
         print(f"Confirm rate (last window): {snap['window_confirm_rate']:.3f}")
         print(f"Rewards distributed (last window): {snap['window_rewards']:.6f}")
@@ -104,7 +113,14 @@ class Metrics:
         print(f"Migration rate: {snap['migration_rate']}")
         print(f"Top10 window rewards (all):  ",  ", ".join([f"{vid}:{amt:.6f}" for vid, amt in sorted(snap["reward_delta_by_id"].items(), key=lambda x: x[1], reverse=True)[:10]]))
         print(f"Top10 window rewards (pools):  ",  ", ".join([f"{vid}:{amt:.6f}" for vid, amt in sorted([(vid, delta) for vid, delta in snap["reward_delta_by_id"].items() if vid in pool_ids], key=lambda x: x[1], reverse=True)[:10]]))
-        print(f"Top10 APRs (pools):  ",  ", ".join([f"{vid}:{apr:.6f}" for vid, apr in sorted(snap["pools_apr"], key=lambda x: x[1], reverse=True)[:10]]))
+        # pools stats
+        print("Top10 APR (pools):", ", ".join([f"{pid}:{st['apr']:.6f}" for pid, st in pools_top10_apr]))
+        print("Top10 VP share (pools):", ", ".join([f"{pid}:{st['vp_share']:.3f}" for pid, st in pools_top10_vp_share]))
+        print("Top10 VP (pools):", ", ".join([f"{pid}:{st['voting_power']:.3f}" for pid, st in pools_top10_vp]))
+        print("Top10 reward delta (pools):",
+              ", ".join([f"{pid}:{st['reward_delta']:.6f}" for pid, st in pools_top10_rewards]))
+        print("Top10 delegators (pools):", ", ".join([f"{pid}:{st['delegators']}" for pid, st in pools_top10_delegators]))
+        print("Top10 net flow (pools):", ", ".join([f"{pid}:{st['net_flow']}" for pid, st in pools_top10_net_flow]))
 
         print("===============")
 
@@ -117,10 +133,21 @@ class Metrics:
         self.window_gained.clear()
         self.window_lost.clear()
 
-    def _top_pools_by_apr(self, world, k=10):
-        pools = world.pools()
-        ranked = sorted(pools, key=lambda v: getattr(v, "apr", 0.0), reverse=True)[:k]
-        return [(v.id, v.apr) for v in ranked]
+    def _build_pool_stats(self, world, total_vp, reward_delta_by_id):
+        pool_stats = {}
+        for v in world.pools():
+            vp = v.voting_power
+            pool_stats[v.id] = {
+                "apr": round(v.apr, 5),
+                "voting_power": vp,
+                "vp_share": (vp / total_vp) if total_vp > 0 else 0.0,
+                "delegators": v.dcount,
+                "reward_delta": reward_delta_by_id.get(v.id, 0.0),
+                "gained": self.window_gained.get(v.id, 0),
+                "lost": self.window_lost.get(v.id, 0),
+            }
+            pool_stats[v.id]["net_flow"] = pool_stats[v.id]["gained"] - pool_stats[v.id]["lost"]
+        return pool_stats
 
     def _top_voting_power(self, validators, total,  k):
         if k > len(validators):
