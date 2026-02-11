@@ -1,5 +1,4 @@
 from model.committee import Committee
-from engine.rewards import distribute_committee_rewards
 from engine.metrics import Metrics
 
 class Protocol:
@@ -18,7 +17,9 @@ class Protocol:
         return committee
 
     def calculate_rewards(self, committee):
-        distribute_committee_rewards(committee, self.world.reward)
+        self.world.setup.distribute_rewards(
+            committee,
+            reward_amount=self.world.reward)
 
     def calculate_validators_scores(self):
         #total = 0

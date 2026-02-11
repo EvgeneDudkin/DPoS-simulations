@@ -4,11 +4,8 @@ class Committee:
         self.validators = []
         self.votes = {}
         self.proposer = None
-        self.selectedVoters = []
+        self.selected_voters = []
         self.setup = setup
-
-    def choose_proposer(self):
-        self.proposer = self.setup.choose_proposer(self.validators)
 
     # def total_voters_voting_power(self):
     #     total = sum(v.voting_power for v in self.selectedVoters)
@@ -34,12 +31,13 @@ class Committee:
     #         validator.update_reward(self.validators, share, reward)
 
     def round(self):
-        self.choose_proposer()
+        self.setup.choose_proposer(self)
         new_block = self.proposer.propose(self)
-        for v in self.validators:
+        for v in self.setup.get_voters(self, new_block):
              self.votes[v] = v.sign(new_block)
-        self.selectedVoters = self.proposer.select_voters(self.votes)
-        if new_block.is_confirmed(self.validators, self.selectedVoters):
+
+        self.selected_voters = self.proposer.select_voters(self.votes)
+        if new_block.is_confirmed(self.validators, self.selected_voters):
             return new_block
         else:
             print ("Invalid")

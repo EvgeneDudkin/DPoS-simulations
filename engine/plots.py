@@ -5,7 +5,7 @@ def _get_series(history, pool_ids, key):
     """
     history: list of snapshots (dicts)
     pool_ids: list[int]
-    key: one of "apr", "vp_share", "voting_power", "delegators", "reward_delta", "net_flow"
+    key: one of "apr", "voting_power", "delegators", "reward_delta", "net_flow"
     Returns: rounds(list), data(dict pool_id -> list)
     """
     rounds = []
@@ -73,7 +73,7 @@ def store_pool_netflow_bars_plots(history, pool_ids, title="Net delegator flow p
 
 # def choose_top_pools_by(history, key, k=10):
 #     """
-#     Choose pools based on the last snapshot's pool_stats by a key (e.g., "voting_power", "vp_share", "apr").
+#     Choose pools based on the last snapshot's pool_stats by a key (e.g., "voting_power", "apr").
 #     """
 #     last = history[-1]["pool_stats"]
 #     ranked = sorted(last.items(), key=lambda x: x[1].get(key, 0.0), reverse=True)

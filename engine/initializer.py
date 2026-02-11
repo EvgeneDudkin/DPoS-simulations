@@ -100,7 +100,8 @@ def initialize_world(
         loyalty: float = 0.0,
         pool_selection_weighted: bool = True,
         verbose: bool = False,
-        apr_window: int = 1000
+        apr_window: int = 1000,
+        pool_commission_rate: float = 0.0,
 ):
     """
     Creates validators + delegators with normalized total stake = 1.0.
@@ -127,7 +128,8 @@ def initialize_world(
     validators = []
     for i in range(num_validators):
         is_pool = (i < num_pools)  # simplest: first num_pools are pools
-        validators.append(Validator(i, v_stakes[i], is_pool=is_pool, apr_window=apr_window))
+        commission_rate = pool_commission_rate if is_pool else 0.0
+        validators.append(Validator(i, v_stakes[i], is_pool=is_pool, apr_window=apr_window, commission_rate=commission_rate))
 
     # delegator stakes (heavy-tailed, normalized)
     d_stakes = _lognormal_stakes(delegators_total, num_delegators, mu=delegator_mu, sigma=delegator_sigma)

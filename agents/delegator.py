@@ -10,25 +10,13 @@ class Delegator:
         self.loyalty = loyalty #Describes delegators loyalty. Should be between 0 and 1. Bigger loyalty indicates that the delegator changes the validator less often.
         self.apr_gap_threshold = apr_gap_threshold
 
-    # def delegate_to(self, validator):
-    #     self.bounded_validator = validator
-    #     validator.add_delegator(self)
-
     def expected_earning(self, pool, reward):
         total_voting_power = sum(v.voting_power for v in pool)
         validator_share = (self.bounded_validator.voting_power / total_voting_power) * reward
         delegator_share = (self.stake / self.bounded_validator.voting_power) * validator_share
         return delegator_share
 
-    # def choose_validator(self, pool):
-    #     changing_chance = random.randint(1, 100)
-    #     if changing_chance <= (self.loyalty * 100):
-    #         return self.bounded_validator  # stay
-    #
-    #     weights = [validator.score ** self.aggressiveness for validator in pool]
-    #     return random.choices(pool, weights=weights)[0]
-
-    def update_reward(self, pool, reward, total_reward):
+    def update_reward(self, reward):
         self.total_reward += reward
 
     def choose_validator_by_apr(self, pool):

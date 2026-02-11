@@ -3,10 +3,11 @@ from model.block import Block
 from collections import deque
 
 class Validator:
-    def __init__ (self , id , stake, apr_window, is_pool=False):
+    def __init__ (self , id , stake, apr_window, is_pool=False, commission_rate=0.0):
         self.id = id
         self.stake = stake
         self.is_pool = is_pool
+        self.commission_rate = commission_rate # for pools functionality
         self.proposed_blocks = []
         self.delegators = {}
         self.voting_power = self.stake
@@ -53,13 +54,24 @@ class Validator:
         self.voting_power += delegator.stake
         self.dcount += 1
 
-    def update_reward(self, pool, reward, total_reward):
+    def update_reward(self, reward, total_reward):
         self.overall_rewards += reward
-        self.total_reward += (self.stake / self.voting_power) * reward
+
+        # in case of pool -> + commission
+        if self.is_pool and self.commission_rate > 0:
+            commission = reward * self.commission_rate
+            self.total_reward += commission
+            distributable = reward - commission
+        else:
+            distributable = reward
+
+        operator_staker_share = distributable * (self.stake / self.voting_power)
+        self.total_reward += operator_staker_share
+
         for delegator in self.delegators:
             if self.delegators[delegator] > 0:
-                share = (delegator.stake / self.voting_power) * reward
-                delegator.update_reward(pool, share, total_reward)
+                share = (delegator.stake / self.voting_power) * distributable
+                delegator.update_reward(share)
 
     def update_apr(self, rounds_per_year):
         # delta rewards since last time we updated APR

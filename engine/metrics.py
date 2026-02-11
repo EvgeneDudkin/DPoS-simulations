@@ -63,7 +63,7 @@ class Metrics:
         reward_delta_by_id = self._compute_window_reward_deltas(world.validators)
 
         # pools stats
-        pool_stats = self._build_pool_stats(world, total_vp, reward_delta_by_id)
+        pool_stats = self._build_pool_stats(world, reward_delta_by_id)
 
         snap = {
             "round": round_index,
@@ -97,7 +97,6 @@ class Metrics:
         pools_top10_delegators = sorted(pool_stats.items(), key=lambda x: x[1]["delegators"], reverse=True)[:10]
         pools_top10_rewards = sorted(pool_stats.items(), key=lambda x: x[1]["reward_delta"], reverse=True)[:10]
         pools_top10_vp = sorted(pool_stats.items(), key=lambda x: x[1]["voting_power"], reverse=True)[:10]
-        pools_top10_vp_share = sorted(pool_stats.items(), key=lambda x: x[1]["vp_share"], reverse=True)[:10]
         pools_top10_net_flow = sorted(pool_stats.items(), key=lambda x: x[1]["net_flow"], reverse=True)[:10]
 
         print("=== METRICS ===")
@@ -115,7 +114,6 @@ class Metrics:
         print(f"Top10 window rewards (pools):  ",  ", ".join([f"{vid}:{amt:.6f}" for vid, amt in sorted([(vid, delta) for vid, delta in snap["reward_delta_by_id"].items() if vid in pool_ids], key=lambda x: x[1], reverse=True)[:10]]))
         # pools stats
         print("Top10 APR (pools):", ", ".join([f"{pid}:{st['apr']:.6f}" for pid, st in pools_top10_apr]))
-        print("Top10 VP share (pools):", ", ".join([f"{pid}:{st['vp_share']:.3f}" for pid, st in pools_top10_vp_share]))
         print("Top10 VP (pools):", ", ".join([f"{pid}:{st['voting_power']:.3f}" for pid, st in pools_top10_vp]))
         print("Top10 reward delta (pools):",
               ", ".join([f"{pid}:{st['reward_delta']:.6f}" for pid, st in pools_top10_rewards]))
@@ -133,14 +131,13 @@ class Metrics:
         self.window_gained.clear()
         self.window_lost.clear()
 
-    def _build_pool_stats(self, world, total_vp, reward_delta_by_id):
+    def _build_pool_stats(self, world, reward_delta_by_id):
         pool_stats = {}
         for v in world.pools():
             vp = v.voting_power
             pool_stats[v.id] = {
                 "apr": round(v.apr, 5),
                 "voting_power": vp,
-                "vp_share": (vp / total_vp) if total_vp > 0 else 0.0,
                 "delegators": v.dcount,
                 "reward_delta": reward_delta_by_id.get(v.id, 0.0),
                 "gained": self.window_gained.get(v.id, 0),
