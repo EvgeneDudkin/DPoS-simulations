@@ -1,4 +1,6 @@
 import random
+
+from agents.byzantine import Byzantine
 from engine.world import World  # adjust import if your World lives elsewhere
 from agents.validator import Validator
 from agents.delegator import Delegator
@@ -41,11 +43,11 @@ def _get_shares(total, n, max_stake, min_stake=0.001, alpha=1.0, max_iter=10_000
     for _ in range(max_iter):
         shares_unit = _random_positive_vector(n, alpha=alpha)
         shares = [remaining * x for x in shares_unit]
-        if max(shares) <= cap_remaining  + 1e-12:
+        if max(shares) <= cap_remaining + 1e-12:
             return [min_stake + r for r in shares]
 
     # Fallback: max_stake then renormalize remaining mass iteratively
-    shares = [remaining  * x for x in _random_positive_vector(n, alpha=alpha)]
+    shares = [remaining * x for x in _random_positive_vector(n, alpha=alpha)]
     for _ in range(n * 5):
         over = [i for i, s in enumerate(shares) if s > cap_remaining]
         if not over:
@@ -71,6 +73,7 @@ def _get_shares(total, n, max_stake, min_stake=0.001, alpha=1.0, max_iter=10_000
     shares = [min_stake + x for x in shares]
     return shares
 
+
 # Delegator stakes are sampled from a lognormal distribution
 # and then normalized to the target total.
 #
@@ -84,6 +87,7 @@ def _lognormal_stakes(total, n, mu=-2.0, sigma=1.0):
     xs = [random.lognormvariate(mu, sigma) for _ in range(n)]
     s = sum(xs)
     return [total * (x / s) for x in xs]
+
 
 def initialize_world(
         *,
@@ -102,6 +106,10 @@ def initialize_world(
         verbose: bool = False,
         apr_window: int = 1000,
         pool_commission_rate: float = 0.0,
+        byzantine_validator_stake=0.1,
+        victim_pool_stake=0.1,
+        vote_omission_attack_on=False,
+        vote_delay_attack_on=False,
 ):
     """
     Creates validators + delegators with normalized total stake = 1.0.
@@ -117,19 +125,31 @@ def initialize_world(
     if num_pools <= 0:
         raise ValueError("num_pools must be >= 1.")
 
-    total_stake = 1.0
+    total_stake = 1.0 - byzantine_validator_stake - victim_pool_stake
     validators_total = total_stake * validator_frac
     delegators_total = total_stake - validators_total
 
     # validator self-bonds (capped)
     v_stakes = _get_shares(validators_total, num_validators, max_validator_stake, alpha=1.0)
-    #v_stakes.sort(reverse=True)
+    # v_stakes.sort(reverse=True)
 
     validators = []
     for i in range(num_validators):
         is_pool = (i < num_pools)  # simplest: first num_pools are pools
         commission_rate = pool_commission_rate if is_pool else 0.0
-        validators.append(Validator(i, v_stakes[i], is_pool=is_pool, apr_window=apr_window, commission_rate=commission_rate))
+        validators.append(
+            Validator(i, v_stakes[i], is_pool=is_pool, apr_window=apr_window, commission_rate=commission_rate))
+
+    victims = []
+    if victim_pool_stake > 0.0:
+        victim = Validator(num_validators, victim_pool_stake, is_pool=True, apr_window=apr_window,
+                      commission_rate=pool_commission_rate)
+        validators.append(victim)
+        victims.append(victim)
+
+    if byzantine_validator_stake > 0.0:
+        validators.append(Byzantine(num_validators + 1, byzantine_validator_stake, apr_window, victims,
+                                    vote_omission_attack_on, vote_delay_attack_on))
 
     # delegator stakes (heavy-tailed, normalized)
     d_stakes = _lognormal_stakes(delegators_total, num_delegators, mu=delegator_mu, sigma=delegator_sigma)
@@ -150,6 +170,7 @@ def initialize_world(
 
     return world
 
+
 def assign_initial_delegations(world, weighted=True):
     pools = world.pools()
     if not pools:
@@ -161,6 +182,7 @@ def assign_initial_delegations(world, weighted=True):
         chosen = random.choices(pools, weights=weights, k=1)[0]
         d.bounded_validator = chosen
         chosen.add_delegator(d)
+
 
 def print_sanity_checks(world, max_validator_stake):
     print("===== SANITY CHECKS =====")
@@ -178,7 +200,7 @@ def print_sanity_checks(world, max_validator_stake):
 
     print(f"Max validator self-stake:     {max_v_stake:.6f}")
     print(f"Min validator self-stake:     {min_v_stake:.6f}")
-    
+
     print(f"Stake cap respected:          {max_v_stake <= max_validator_stake}")
 
     total_voting_power = sum(v.voting_power for v in world.validators)

@@ -17,6 +17,8 @@ class ProbabilisticYesVotes(VotePolicy):
         for v in committee.validators:
             if committee.proposer == v:
                 continue
+            if not v.vote_for_leader(committee.proposer):
+                continue
             if random.random() > self.online_p:
                 continue  # offline
             if random.random() <= self.vote_p:

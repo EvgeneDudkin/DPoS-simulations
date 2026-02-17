@@ -96,3 +96,6 @@ class Validator:
         # annualize per-round return
         self.apr = (window_rewards / avg_vp) * (rounds_per_year / window_rounds)
         return self.apr
+
+    def vote_for_leader(self, leader):
+        return True

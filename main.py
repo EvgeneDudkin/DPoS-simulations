@@ -65,21 +65,25 @@ if __name__ == '__main__':
     apr_window = 1575  # 7 days worth of epochs
     rounds_per_year = 82125  # 1 year worth of epochs
 
-    setup = get_eth_lido_setup()
+    setup = get_eth_lido_setup(online_p=1, vote_p=1, scale_by_included=True)
     world = initialize_world(
-        num_validators=100,
-        num_pools=10,
+        num_validators=98,
+        num_pools=9,
         num_delegators=1000,
         setup=setup,
         reward_per_round=reward,
         validator_frac=0.8,
         max_validator_stake=0.33,
-        aggressiveness=1,
+        aggressiveness=1.0,
         loyalty=0.0,
         pool_selection_weighted=True,
         verbose=True,
         apr_window=apr_window,
-        pool_commission_rate=setup.pool_commission_rate
+        pool_commission_rate=setup.pool_commission_rate,
+        byzantine_validator_stake=0.2,
+        victim_pool_stake=0.1,
+        vote_omission_attack_on=True,
+        vote_delay_attack_on=False
     )
     protocol = Protocol(committee_size, world, rounds, migration_delay_rounds, rounds_per_year, apr_window)
     protocol.run()
