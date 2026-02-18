@@ -196,7 +196,7 @@ def print_sanity_checks(world, max_validator_stake):
     print(f"  Delegator stake:             {total_delegator_stake:.6f}")
 
     max_v_stake = max(v.stake for v in world.validators)
-    min_v_stake = max(v.stake for v in world.validators)
+    min_v_stake = min(v.stake for v in world.validators)
 
     print(f"Max validator self-stake:     {max_v_stake:.6f}")
     print(f"Min validator self-stake:     {min_v_stake:.6f}")

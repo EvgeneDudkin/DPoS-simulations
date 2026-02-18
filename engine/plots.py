@@ -23,7 +23,7 @@ def _get_series(history, pool_ids, key):
 
     return rounds, data
 
-def store_pool_stats_plot(history, pool_ids, key, title, ylabel, filename):
+def store_pool_stats_plot(history, pool_ids, key, title, ylabel, folder, filename):
     rounds, data = _get_series(history, pool_ids, key)
 
     plt.figure()
@@ -50,12 +50,12 @@ def store_pool_stats_plot(history, pool_ids, key, title, ylabel, filename):
         plt.ylim(y_min - pad, y_max + pad)
 
     plt.tight_layout()
-    out_path = os.path.join("out", filename)
+    out_path = os.path.join(folder, filename)
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
     plt.savefig(out_path, dpi=150)
     plt.close()
 
-def store_pool_netflow_bars_plots(history, pool_ids, title="Net delegator flow per window"):
+def store_pool_netflow_bars_plots(history, pool_ids, folder, title="Net delegator flow per window"):
     rounds, data = _get_series(history, pool_ids, "net_flow")
 
     # bar plot: one figure per pool (cleanest), or overlay if few pools
@@ -66,7 +66,7 @@ def store_pool_netflow_bars_plots(history, pool_ids, title="Net delegator flow p
         plt.ylabel("net flow (gained - lost)")
         plt.title(f"{title} (pool {pid})")
         plt.tight_layout()
-        out_path = os.path.join(f"out/netflow/netflow_pool_{pid}.png")
+        out_path = os.path.join(folder, f"netflow_pool_{pid}.png")
         os.makedirs(os.path.dirname(out_path), exist_ok=True)
         plt.savefig(out_path, dpi=150)
         plt.close()
