@@ -12,6 +12,9 @@ def _get_series(history, pool_ids, key):
     data = {pid: [] for pid in pool_ids}
 
     for snap in history:
+        if snap["round"] == 0:
+            continue # skip round 0 for the visualization
+
         rounds.append(snap["round"])
         stats = snap["pool_stats"]  # dict pool_id -> dict
 
@@ -55,17 +58,24 @@ def store_pool_stats_plot(history, pool_ids, key, title, ylabel, folder, filenam
     plt.savefig(out_path, dpi=150)
     plt.close()
 
+
 def store_pool_netflow_bars_plots(history, pool_ids, folder, title="Net delegator flow per window"):
     rounds, data = _get_series(history, pool_ids, "net_flow")
+    # width based on spacing
+    if len(rounds) >= 2:
+        step = rounds[1] - rounds[0]
+        width = 0.8 * step
+    else:
+        width = 1.0
 
     # bar plot: one figure per pool (cleanest), or overlay if few pools
     for pid in pool_ids:
         plt.figure()
-        plt.bar(rounds, data[pid])
+        plt.bar(rounds, data[pid], width=width)
         plt.xlabel("round")
         plt.ylabel("net flow (gained - lost)")
         plt.title(f"{title} (pool {pid})")
-        plt.tight_layout()
+        #plt.tight_layout()
         out_path = os.path.join(folder, f"netflow_pool_{pid}.png")
         os.makedirs(os.path.dirname(out_path), exist_ok=True)
         plt.savefig(out_path, dpi=150)

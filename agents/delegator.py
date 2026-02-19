@@ -1,7 +1,7 @@
 import random
 
 class Delegator:
-    def __init__ (self , id , stake, aggressiveness = 1, loyalty = 0, apr_gap_threshold = 0.02):
+    def __init__ (self , id , stake, aggressiveness = 1, loyalty = 0, apr_gap_threshold = 0.0035):
         self.id = id
         self.stake = stake
         self.bounded_validator = None

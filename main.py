@@ -1,4 +1,6 @@
 import os.path
+
+from agents.byzantine import Byzantine
 from engine.protocol import Protocol
 from engine.initializer import initialize_world
 from engine.plots import store_pool_stats_plot, store_pool_netflow_bars_plots
@@ -78,8 +80,8 @@ def run_simulation(com_size, number_of_rounds, reward_per_round,
         reward_per_round=reward_per_round,
         validator_frac=0.8,
         max_validator_stake=0.33,
-        aggressiveness=1.0,
-        loyalty=0.0,
+        aggressiveness=0.5,
+        loyalty=0.7,
         pool_selection_weighted=True,
         verbose=True,
         apr_window=apr_window_length,
@@ -90,7 +92,7 @@ def run_simulation(com_size, number_of_rounds, reward_per_round,
         vote_delay_attack_on=vote_delay_attack_on
     )
     protocol = Protocol(com_size, world, number_of_rounds, migration_rounds_delay, rounds_per_year_count,
-                        apr_window_length)
+                        update_delegation_warm_up_rounds = apr_window_length * 3)
     protocol.run()
     return protocol.metrics.history, world
 
@@ -116,7 +118,6 @@ def visualize(history, world, simulation_name):
 
     store_pool_netflow_bars_plots(history, pool_ids, folder=os.path.join(folder, "netflow"))
 
-
 if __name__ == '__main__':
     committee_size = 100
     rounds = 10000
@@ -138,3 +139,38 @@ if __name__ == '__main__':
     # visualization
     visualize(baseline_history, baseline_world, "baseline")
     visualize(attack_run_history, attack_world, "attack")
+
+    # calculate effectiveness / cost (utility: total_reward)
+    utility_baseline = {}
+    attacker_utility_baseline = 0
+    utility_attack = {}
+    attacker_utility_attack = 0
+    P_attacker = 0
+    for validator in baseline_world.validators:
+        if isinstance(validator, Byzantine):
+            attacker_utility_baseline = validator.total_reward
+            P_attacker = validator.voting_power
+        else:
+            utility_baseline[validator.id] = validator.total_reward
+
+    for validator in attack_world.validators:
+        if isinstance(validator, Byzantine):
+            attacker_utility_attack = validator.total_reward
+            P_attacker = validator.voting_power
+        else:
+            utility_attack[validator.id] = validator.total_reward
+
+    eff_values = {}
+    for v_id, utility_value in utility_baseline.items():
+        eff_values[v_id] = (utility_value - utility_attack[v_id]) / (utility_value * P_attacker)
+    max_eff_v_id = max(eff_values, key=eff_values.get) # id of validator for which effectiveness is max
+    effectiveness = eff_values[max_eff_v_id]
+    print("Effectiveness: ", effectiveness)
+
+    losses = {}
+    for v_id, utility_value in utility_baseline.items():
+        losses[v_id] = utility_value - utility_attack[v_id]
+    loss_victim_id = max(losses, key=losses.get) # id of validator for which loss is max
+    attacker_loss = attacker_utility_baseline - attacker_utility_attack
+    cost = attacker_loss / losses[loss_victim_id]
+    print("Cost: ", cost)
