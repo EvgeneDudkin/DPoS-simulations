@@ -1,5 +1,5 @@
 import random
-
+import math
 from agents.byzantine import Byzantine
 from engine.world import World  # adjust import if your World lives elsewhere
 from agents.validator import Validator
@@ -110,6 +110,8 @@ def initialize_world(
         victim_pool_stake=0.1,
         vote_omission_attack_on=False,
         vote_delay_attack_on=False,
+        pull_prob: float = 0.0,
+        star_gap_multiplier: float = 3.0,
 ):
     """
     Creates validators + delegators with normalized total stake = 1.0.
@@ -154,9 +156,27 @@ def initialize_world(
     # delegator stakes (heavy-tailed, normalized)
     d_stakes = _lognormal_stakes(delegators_total, num_delegators, mu=delegator_mu, sigma=delegator_sigma)
 
+    avg_d_stake = (sum(d_stakes) / len(d_stakes)) if len(d_stakes) > 0 else 1.0
+
+    # more loyal - more consecutive underperforming rounds before migration
+    base_streak = max(1, int(200 + 1500 * loyalty))
+
     delegators = []
     for j in range(num_delegators):
-        d = Delegator(j, d_stakes[j], aggressiveness=aggressiveness, loyalty=loyalty)
+        stake = d_stakes[j]
+        stake_factor = stake / (avg_d_stake + 1e-18) # > 1 for 'big' delegators
+
+        # personal threshold: large ones tolerate small differences (higher threshold), small ones are more "nervous"
+        # + a small noise level (log-normal)
+        noise = random.lognormvariate(mu=0.0, sigma=0.15)  # ~ +/- 15%
+        personal_threshold = 0.0035 * (1.0 + 0.35 * math.log1p(stake_factor)) * noise
+
+        # personal streak: large ones + loyal wait longer
+        personal_streak = int(base_streak * (1.0 + 0.35 * math.log1p(stake_factor)))
+        personal_streak = max(1, personal_streak)
+
+        d = Delegator(j, stake, aggressiveness=aggressiveness, loyalty=loyalty, apr_gap_threshold=personal_threshold, streak_required=personal_streak,
+                      pull_prob=pull_prob, star_gap_multiplier=star_gap_multiplier)
         delegators.append(d)
 
     # build world
@@ -171,12 +191,16 @@ def initialize_world(
     return world
 
 
-def assign_initial_delegations(world, weighted=True):
+def assign_initial_delegations(world, weighted=True, alpha=0.5):
     pools = world.pools()
     if not pools:
         raise RuntimeError("No pool validators available for initial delegation.")
 
-    weights = [v.voting_power for v in pools] if weighted else None
+    if weighted:
+        eps = 1e-18
+        weights = [(v.voting_power + eps) ** alpha for v in pools]
+    else:
+        weights = None
 
     for d in world.delegators:
         chosen = random.choices(pools, weights=weights, k=1)[0]

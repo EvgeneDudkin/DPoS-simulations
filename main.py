@@ -70,7 +70,8 @@ def get_eth_rocketpool_setup(proposer_cut=1 / 8, online_p=0.99, vote_p=0.995, sc
 def run_simulation(com_size, number_of_rounds, reward_per_round,
                    migration_rounds_delay, rounds_per_year_count,
                    vote_omission_attack_on, vote_delay_attack_on,
-                   apr_window_length, sim_setup):
+                   apr_window_length, sim_setup,
+                   pull_prob=0.02, star_gap_multiplier=3.0):
     random.seed(SEED) # seed. Important for proper simulations of baseline & attacks
     world = initialize_world(
         num_validators=98,
@@ -80,8 +81,8 @@ def run_simulation(com_size, number_of_rounds, reward_per_round,
         reward_per_round=reward_per_round,
         validator_frac=0.8,
         max_validator_stake=0.33,
-        aggressiveness=0.5,
-        loyalty=0.7,
+        aggressiveness=0.2,
+        loyalty=0.95,
         pool_selection_weighted=True,
         verbose=True,
         apr_window=apr_window_length,
@@ -89,13 +90,14 @@ def run_simulation(com_size, number_of_rounds, reward_per_round,
         byzantine_validator_stake=0.2,
         victim_pool_stake=0.1,
         vote_omission_attack_on=vote_omission_attack_on,
-        vote_delay_attack_on=vote_delay_attack_on
+        vote_delay_attack_on=vote_delay_attack_on,
+        pull_prob=pull_prob,
+        star_gap_multiplier=star_gap_multiplier,
     )
     protocol = Protocol(com_size, world, number_of_rounds, migration_rounds_delay, rounds_per_year_count,
                         update_delegation_warm_up_rounds = apr_window_length * 3)
     protocol.run()
     return protocol.metrics.history, world
-
 
 def visualize(history, world, simulation_name):
     pool_ids = [v.id for v in world.pools()]
@@ -120,7 +122,7 @@ def visualize(history, world, simulation_name):
 
 if __name__ == '__main__':
     committee_size = 100
-    rounds = 10000
+    rounds = 100000
     reward = 4.26e-7
     migration_delay_rounds = 1100  # 5 days worth of epochs
     apr_window = 1575  # 7 days worth of epochs
@@ -174,3 +176,40 @@ if __name__ == '__main__':
     attacker_loss = attacker_utility_baseline - attacker_utility_attack
     cost = attacker_loss / losses[loss_victim_id]
     print("Cost: ", cost)
+
+    # -------------------------
+    # ALLIED POOL ANALYSIS
+    # -------------------------
+    # Identify the pool that benefited most from the attack (captured migrating
+    # delegators). Compute adjusted metrics for the hypothetical combined entity
+    # (Byzantine attacker + allied pool operator = same economic actor).
+    #
+    # cost2 < 0  → attack was NET PROFITABLE for the combined entity
+    # cost2 ∈ (0, cost) → still a net cost, but lower than cost alone
+    # effectiveness2 > effectiveness → always; captures full economic transfer
+    ally_gains = {}
+    for v_id, baseline_reward in utility_baseline.items():
+        extra = utility_attack[v_id] - baseline_reward
+        if extra > 0:
+            ally_gains[v_id] = extra
+
+    if ally_gains:
+        best_ally_id = max(ally_gains, key=ally_gains.get)
+        ally_extra_reward = ally_gains[best_ally_id]
+        # VP from attack world (grew as delegators migrated to ally)
+        P_ally = next(v.voting_power for v in attack_world.validators
+                      if v.id == best_ally_id)
+
+        victim_loss = losses[loss_victim_id]
+
+        # Net cost to combined entity: negative means the attack was profitable
+        cost2 = (attacker_loss - ally_extra_reward) / victim_loss
+
+        # Total value transferred from victim toward attacker+ally per unit of
+        # attacker stake — how efficient was the attack economically?
+        effectiveness2 = (victim_loss + ally_extra_reward) / (utility_baseline[loss_victim_id] * P_attacker)
+
+        print(f"Best ally pool id:          {best_ally_id}")
+        print(f"Ally extra reward:          {ally_extra_reward:.6e}")
+        print(f"Cost2 (net, attacker+ally): {cost2:.4f}")
+        print(f"Effectiveness2 (combined):  {effectiveness2:.4f}")
