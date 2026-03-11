@@ -2,7 +2,7 @@ from model.committee import Committee
 from engine.metrics import Metrics
 
 class Protocol:
-    def __init__(self, committee_size, world, rounds, migration_delay_rounds, rounds_per_year, update_delegation_warm_up_rounds):
+    def __init__(self, committee_size, world, rounds, migration_delay_rounds, rounds_per_year, update_delegation_warm_up_rounds, verbose):
         self.committee_size = committee_size
         self.world = world
         self.rounds = rounds
@@ -10,6 +10,7 @@ class Protocol:
         self.metrics = Metrics(print_frequency=1000)
         self.rounds_per_year = rounds_per_year
         self.update_delegation_warm_up_rounds = update_delegation_warm_up_rounds
+        self.verbose = verbose
 
     def select_committee(self):
         committee = Committee(self.committee_size, self.world.setup)
@@ -78,4 +79,5 @@ class Protocol:
 
                 self.calculate_validators_scores()
 
-            self.metrics.report_if_needed(self.world, i)
+            if self.verbose:
+                self.metrics.report_if_needed(self.world, i)

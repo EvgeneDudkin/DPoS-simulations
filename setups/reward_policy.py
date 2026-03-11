@@ -6,56 +6,59 @@ class RewardPolicy(ABC):
         pass
 
 class CosmosRewardPolicy(RewardPolicy):
-    def __init__(self, proposer_bonus_rate=0.0, variational_bonus=False):
-        self.proposer_bonus_rate = proposer_bonus_rate
-        self.variational_bonus = variational_bonus
-
-    def distribute(self, committee, reward_amount):
-        max_bonus = reward_amount * self.proposer_bonus_rate
-        receivers = committee.selected_voters
-        total_receivers_power = sum(v.voting_power for v in receivers)
-        total_committee_power = sum(v.voting_power for v in committee.validators)
-
-        bonus = max_bonus
-        if self.variational_bonus:
-            frac = total_receivers_power / total_committee_power
-
-            # normalize from [2/3..1] to [0..1]
-            x = (frac - (2 / 3)) / (1 / 3)
-            x = max(0.0, min(1.0, x))
-            bonus = max_bonus * x
-
-        remainder = reward_amount - bonus
-        for v in receivers:
-            share = remainder * (v.voting_power / total_receivers_power)
-            if v == committee.proposer:
-                share += bonus
-
-            v.update_reward(share, reward_amount)
-
-class EthereumRewardPolicy(RewardPolicy):
-    def __init__(self, proposer_cut=1/8, execution_reward=0.0, scale_by_included=True):
-        self.proposer_cut = proposer_cut
-        self.execution_reward = execution_reward
-        self.scale_by_included = scale_by_included
+    def __init__(self, base_reward_fraction = 0.9, proposer_bonus_fraction = 0.05, bonus_threshold = 2/3):
+        self.base_reward_fraction = base_reward_fraction # a parameter from paper
+        self.proposer_bonus_fraction = proposer_bonus_fraction # b parameter from paper
+        self.bonus_threshold = bonus_threshold # t parameter from paper
 
     def distribute(self, committee, reward_amount):
         receivers = committee.selected_voters
         included_power = sum(v.voting_power for v in receivers)
-        total_power = sum(v.voting_power for v in committee.validators)
 
-        if self.scale_by_included:
-            # here we scale our reward based on the included votes
-            effective_reward = reward_amount * (included_power / total_power)
-        else:
-            effective_reward = reward_amount
+        # Step 1: leader’s bonus
+        leader_bonus = reward_amount * self.proposer_bonus_fraction * (1 - self.base_reward_fraction ) * ((included_power -  self.bonus_threshold) / (1 - self.bonus_threshold))
+        committee.proposer.update_reward(leader_bonus)
 
-        proposer_part = effective_reward * self.proposer_cut
-        attesters_part = effective_reward - proposer_part
+        # Step 2: voting reward
+        voting_reward = (1 - self.base_reward_fraction) * (1 - self.proposer_bonus_fraction ) * reward_amount
+        for v in receivers:
+            v.update_reward(voting_reward * v.voting_power)
 
-        # proposer gets proposer_part + execution reward
-        committee.proposer.update_reward(proposer_part + self.execution_reward, reward_amount)
+        # Step 3: base reward
+        base_reward = self.base_reward_fraction * reward_amount
+        for v in committee.validators:
+            v.update_reward(base_reward * v.voting_power)
+
+        # Step 4: redistributed bonus (in case some signatures are omitted)
+        redistributed_bonus = (1 - ((included_power -  self.bonus_threshold) / (1 - self.bonus_threshold))) * self.proposer_bonus_fraction * (1 - self.base_reward_fraction) * reward_amount
+        for v in committee.validators:
+            v.update_reward(redistributed_bonus * v.voting_power)
+
+        # Step 4: voting reward (in case some signatures are omitted)
+        voting_reward2 = (1 - included_power) * (1 - self.base_reward_fraction) * (1 - self.proposer_bonus_fraction) * reward_amount
+        for v in committee.validators:
+            v.update_reward(voting_reward2 * v.voting_power)
+
+class EthereumRewardPolicy(RewardPolicy):
+    def __init__(self, proposer_cut=1/8, p = 0.781):
+        self.proposer_cut = proposer_cut # fraction of the leader’s bonus (parameter b from the paper)
+        self.p = p # fraction of a voters reward, received on late inclusion (parameter p from the paper)
+
+    def distribute(self, committee, reward_amount):
+        # Step 1: Reward received either on timely or late inclusion.
+        # Since we assume all votes are included within the window, this term is not scaled.
+        base_total = reward_amount * self.p # p * R
+        for v in committee.validators:
+            v.update_reward(base_total * v.voting_power)
+
+        # Step 2: The reward received only for timely inclusion and it is scaled by the included power
+        receivers = committee.selected_voters
+        included_power = sum(v.voting_power for v in receivers)
+        timely_inclusion_reward = (1.0 - self.p) * reward_amount * included_power # (1-p) * R * ΣP
 
         for v in receivers:
-            share = attesters_part * (v.voting_power / included_power)
-            v.update_reward(share, reward_amount)
+            v.update_reward(timely_inclusion_reward * v.voting_power)
+
+        # Step 3: The leaders bonus
+        leader_bonus = self.proposer_cut *  included_power * reward_amount
+        committee.proposer.update_reward(leader_bonus)

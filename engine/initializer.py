@@ -103,6 +103,9 @@ def initialize_world(
         aggressiveness: float = 1.0,
         loyalty: float = 0.0,
         pool_selection_weighted: bool = True,
+        validators_stake_dirichlet_distributed: bool = True,
+        delegators_stake_lognormal_distributed: bool = True,
+        aggregators_number: int = 8,
         verbose: bool = False,
         apr_window: int = 1000,
         pool_commission_rate: float = 0.0,
@@ -132,8 +135,8 @@ def initialize_world(
     delegators_total = total_stake - validators_total
 
     # validator self-bonds (capped)
-    v_stakes = _get_shares(validators_total, num_validators, max_validator_stake, alpha=1.0)
-    # v_stakes.sort(reverse=True)
+    v_stakes = _get_shares(validators_total, num_validators, max_validator_stake,
+                           alpha=1.0) if validators_stake_dirichlet_distributed else [validators_total / (num_validators)] * num_validators
 
     validators = []
     for i in range(num_validators):
@@ -145,16 +148,22 @@ def initialize_world(
     victims = []
     if victim_pool_stake > 0.0:
         victim = Validator(num_validators, victim_pool_stake, is_pool=True, apr_window=apr_window,
-                      commission_rate=pool_commission_rate)
+                           commission_rate=pool_commission_rate)
         validators.append(victim)
         victims.append(victim)
 
     if byzantine_validator_stake > 0.0:
+        # prob to control at least 1 aggregator (calculate prob for attack (take aggregation into consideration))
+        number_of_nodes = len(validators) + 1
+        # if aggregators_number = 0 -> aggregation is not included -> leader = aggregator -> prob. = 1 (probability of omission attack)
+        prob_to_control_aggregator = 1 - (1 - aggregators_number / number_of_nodes) ** (
+                    byzantine_validator_stake * number_of_nodes) if aggregators_number > 0 else 1.0
         validators.append(Byzantine(num_validators + 1, byzantine_validator_stake, apr_window, victims,
-                                    vote_omission_attack_on, vote_delay_attack_on))
+                                    vote_omission_attack_on, vote_delay_attack_on, prob_to_control_aggregator))
 
     # delegator stakes (heavy-tailed, normalized)
-    d_stakes = _lognormal_stakes(delegators_total, num_delegators, mu=delegator_mu, sigma=delegator_sigma)
+    d_stakes = _lognormal_stakes(delegators_total, num_delegators, mu=delegator_mu,
+                                 sigma=delegator_sigma) if delegators_stake_lognormal_distributed else [delegators_total / (num_delegators)] * num_delegators
 
     avg_d_stake = (sum(d_stakes) / len(d_stakes)) if len(d_stakes) > 0 else 1.0
 
@@ -164,7 +173,7 @@ def initialize_world(
     delegators = []
     for j in range(num_delegators):
         stake = d_stakes[j]
-        stake_factor = stake / (avg_d_stake + 1e-18) # > 1 for 'big' delegators
+        stake_factor = stake / (avg_d_stake + 1e-18)  # > 1 for 'big' delegators
 
         # personal threshold: large ones tolerate small differences (higher threshold), small ones are more "nervous"
         # + a small noise level (log-normal)
@@ -175,7 +184,8 @@ def initialize_world(
         personal_streak = int(base_streak * (1.0 + 0.35 * math.log1p(stake_factor)))
         personal_streak = max(1, personal_streak)
 
-        d = Delegator(j, stake, aggressiveness=aggressiveness, loyalty=loyalty, apr_gap_threshold=personal_threshold, streak_required=personal_streak,
+        d = Delegator(j, stake, aggressiveness=aggressiveness, loyalty=loyalty, apr_gap_threshold=personal_threshold,
+                      streak_required=personal_streak,
                       pull_prob=pull_prob, star_gap_multiplier=star_gap_multiplier)
         delegators.append(d)
 

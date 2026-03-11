@@ -17,10 +17,11 @@ class ProbabilisticYesVotes(VotePolicy):
         for v in committee.validators:
             if committee.proposer == v:
                 continue
+            r = random.random()
             if not v.vote_for_leader(committee.proposer):
                 continue
-            if random.random() > self.online_p:
+            if r > self.online_p:
                 continue  # offline
-            if random.random() <= self.vote_p:
+            if r <= self.vote_p:
                 yes.append(v)  # vote for block
         return yes

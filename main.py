@@ -17,26 +17,28 @@ SEED = 42
 # -------------------------
 # COSMOS
 # -------------------------
-def get_cosmos_setup_non_variational(proposer_bonus_rate=0.0, online_p=0.98, vote_p=0.995):
+def get_cosmos_setup_with_proposer_bonus(online_p=0.98, vote_p=0.995):
     return Setup(
         committee_selector=AllValidatorsSelector(),  # in Cosmos : all active vote
         proposer_selector=WeightedProposerSelector(),  # proposer ~ voting_power
         vote_policy=ProbabilisticYesVotes(online_p=online_p, vote_p=vote_p),
         reward_policy=CosmosRewardPolicy(
-            proposer_bonus_rate=proposer_bonus_rate,
-            variational_bonus=False,
+            base_reward_fraction=0.9,
+            proposer_bonus_fraction=0.05,
+            bonus_threshold=2 / 3,
         ),
     )
 
 
-def get_cosmos_setup_variational(proposer_bonus_rate=0.05, online_p=0.98, vote_p=0.995):
+def get_cosmos_setup_without_proposer_bonus(proposer_bonus_rate=0.05, online_p=0.98, vote_p=0.995):
     return Setup(
         committee_selector=AllValidatorsSelector(),  # in Cosmos : all active vote
         proposer_selector=WeightedProposerSelector(),  # proposer ~ voting_power
         vote_policy=ProbabilisticYesVotes(online_p=online_p, vote_p=vote_p),
         reward_policy=CosmosRewardPolicy(
-            proposer_bonus_rate=proposer_bonus_rate,
-            variational_bonus=True,
+            base_reward_fraction=0.9,
+            proposer_bonus_fraction=0,
+            bonus_threshold=2 / 3,
         ),
     )
 
@@ -45,24 +47,22 @@ def get_cosmos_setup_variational(proposer_bonus_rate=0.05, online_p=0.98, vote_p
 # ETH + LIDO / ROCKET POOL
 # -------------------------
 
-def get_eth_lido_setup(proposer_cut=1 / 8, online_p=0.99, vote_p=0.995, scale_by_included=True):
+def get_eth_lido_setup(online_p=0.99, vote_p=0.995):
     return Setup(
         committee_selector=AllValidatorsSelector(),
         proposer_selector=WeightedProposerSelector(),
         vote_policy=ProbabilisticYesVotes(online_p=online_p, vote_p=vote_p),
-        reward_policy=EthereumRewardPolicy(proposer_cut=proposer_cut, scale_by_included=scale_by_included,
-                                           execution_reward=0.0),
+        reward_policy=EthereumRewardPolicy(),
         pool_commission_rate=0.10
     )
 
 
-def get_eth_rocketpool_setup(proposer_cut=1 / 8, online_p=0.99, vote_p=0.995, scale_by_included=True):
+def get_eth_rocketpool_setup(online_p=0.99, vote_p=0.995):
     return Setup(
         committee_selector=AllValidatorsSelector(),
         proposer_selector=WeightedProposerSelector(),
         vote_policy=ProbabilisticYesVotes(online_p=online_p, vote_p=vote_p),
-        reward_policy=EthereumRewardPolicy(proposer_cut=proposer_cut, scale_by_included=scale_by_included,
-                                           execution_reward=0.0),
+        reward_policy=EthereumRewardPolicy(),
         pool_commission_rate=0.14
     )
 
@@ -71,8 +71,11 @@ def run_simulation(com_size, number_of_rounds, reward_per_round,
                    migration_rounds_delay, rounds_per_year_count,
                    vote_omission_attack_on, vote_delay_attack_on,
                    apr_window_length, sim_setup,
-                   pull_prob=0.02, star_gap_multiplier=3.0):
-    random.seed(SEED) # seed. Important for proper simulations of baseline & attacks
+                   victim_stake, attacker_stake,
+                   loyalty, pool_selection_weighted,
+                   validators_stake_dirichlet_distributed, delegators_stake_lognormal_distributed,
+                   aggregators_number, pull_prob, star_gap_multiplier):
+    random.seed(SEED)  # seed. Important for proper simulations of baseline & attacks
     world = initialize_world(
         num_validators=98,
         num_pools=9,
@@ -82,22 +85,26 @@ def run_simulation(com_size, number_of_rounds, reward_per_round,
         validator_frac=0.8,
         max_validator_stake=0.33,
         aggressiveness=0.2,
-        loyalty=0.95,
-        pool_selection_weighted=True,
-        verbose=True,
+        loyalty=loyalty,
+        pool_selection_weighted=pool_selection_weighted,
+        validators_stake_dirichlet_distributed=validators_stake_dirichlet_distributed,
+        delegators_stake_lognormal_distributed=delegators_stake_lognormal_distributed,
+        aggregators_number=aggregators_number,
+        verbose=False,
         apr_window=apr_window_length,
         pool_commission_rate=sim_setup.pool_commission_rate,
-        byzantine_validator_stake=0.2,
-        victim_pool_stake=0.1,
+        byzantine_validator_stake=attacker_stake,
+        victim_pool_stake=victim_stake,
         vote_omission_attack_on=vote_omission_attack_on,
         vote_delay_attack_on=vote_delay_attack_on,
         pull_prob=pull_prob,
         star_gap_multiplier=star_gap_multiplier,
     )
     protocol = Protocol(com_size, world, number_of_rounds, migration_rounds_delay, rounds_per_year_count,
-                        update_delegation_warm_up_rounds = apr_window_length * 3)
+                        update_delegation_warm_up_rounds=apr_window_length * 3, verbose=True)
     protocol.run()
     return protocol.metrics.history, world
+
 
 def visualize(history, world, simulation_name):
     pool_ids = [v.id for v in world.pools()]
@@ -120,23 +127,55 @@ def visualize(history, world, simulation_name):
 
     store_pool_netflow_bars_plots(history, pool_ids, folder=os.path.join(folder, "netflow"))
 
+
 if __name__ == '__main__':
     committee_size = 100
     rounds = 100000
     reward = 4.26e-7
-    migration_delay_rounds = 1100  # 5 days worth of epochs
     apr_window = 1575  # 7 days worth of epochs
     rounds_per_year = 82125  # 1 year worth of epochs
 
-    setup = get_eth_lido_setup(online_p=1, vote_p=1, scale_by_included=True)
+    # Paper:
+    loyalty = 1
+    pool_selection_weighted = False
+    validators_stake_dirichlet_distributed = False
+    delegators_stake_lognormal_distributed = False
+    aggregators_number = 0
+    pull_prob = 0.0
+    # cosmos setup
+    #setup = get_cosmos_setup_with_proposer_bonus(online_p=1, vote_p=1)
+    #migration_delay_rounds = 1  # immediate change
+
+    # Ethereum setup
+    setup = get_eth_lido_setup(online_p=1, vote_p=1)
+    migration_delay_rounds = 1100 # 5 days worth of epochs
+
+    # v_pow = [0.05, 0.15, 0.25]
+    # b_pow = [0.05, 0.1, 0.15, 0.2, 0.25, 0.3]
     baseline_history, baseline_world = run_simulation(committee_size, rounds, reward, migration_delay_rounds,
                                                       rounds_per_year, False, False,
-                                                      apr_window, setup)
+                                                      apr_window, setup,
+                                                      victim_stake=0.05,
+                                                      attacker_stake=0.05,
+                                                      loyalty=loyalty,
+                                                      pool_selection_weighted=pool_selection_weighted,
+                                                      validators_stake_dirichlet_distributed=validators_stake_dirichlet_distributed,
+                                                      delegators_stake_lognormal_distributed=delegators_stake_lognormal_distributed,
+                                                      aggregators_number=aggregators_number, pull_prob=pull_prob,
+                                                      star_gap_multiplier=0.03)
 
-
-    attack_run_history, attack_world = run_simulation(committee_size, rounds, reward, migration_delay_rounds, rounds_per_year,
-                                              True, False,
-                                              apr_window, setup)
+    attack_run_history, attack_world = run_simulation(committee_size, rounds, reward, migration_delay_rounds,
+                                                      rounds_per_year,
+                                                      False, True,
+                                                      apr_window, setup,
+                                                      victim_stake=0.05,
+                                                      attacker_stake=0.05,
+                                                      loyalty=loyalty,
+                                                      pool_selection_weighted=pool_selection_weighted,
+                                                      validators_stake_dirichlet_distributed=validators_stake_dirichlet_distributed,
+                                                      delegators_stake_lognormal_distributed=delegators_stake_lognormal_distributed,
+                                                      aggregators_number=aggregators_number, pull_prob=pull_prob,
+                                                      star_gap_multiplier=0.03)
 
     # visualization
     visualize(baseline_history, baseline_world, "baseline")
@@ -150,29 +189,29 @@ if __name__ == '__main__':
     P_attacker = 0
     for validator in baseline_world.validators:
         if isinstance(validator, Byzantine):
-            attacker_utility_baseline = validator.total_reward
+            attacker_utility_baseline = validator.overall_rewards
             P_attacker = validator.voting_power
         else:
-            utility_baseline[validator.id] = validator.total_reward
+            utility_baseline[validator.id] = validator.overall_rewards
 
     for validator in attack_world.validators:
         if isinstance(validator, Byzantine):
-            attacker_utility_attack = validator.total_reward
+            attacker_utility_attack = validator.overall_rewards
             P_attacker = validator.voting_power
         else:
-            utility_attack[validator.id] = validator.total_reward
+            utility_attack[validator.id] = validator.overall_rewards
 
     eff_values = {}
     for v_id, utility_value in utility_baseline.items():
         eff_values[v_id] = (utility_value - utility_attack[v_id]) / (utility_value * P_attacker)
-    max_eff_v_id = max(eff_values, key=eff_values.get) # id of validator for which effectiveness is max
+    max_eff_v_id = max(eff_values, key=eff_values.get)  # id of validator for which effectiveness is max
     effectiveness = eff_values[max_eff_v_id]
     print("Effectiveness: ", effectiveness)
 
     losses = {}
     for v_id, utility_value in utility_baseline.items():
         losses[v_id] = utility_value - utility_attack[v_id]
-    loss_victim_id = max(losses, key=losses.get) # id of validator for which loss is max
+    loss_victim_id = max(losses, key=losses.get)  # id of validator for which loss is max
     attacker_loss = attacker_utility_baseline - attacker_utility_attack
     cost = attacker_loss / losses[loss_victim_id]
     print("Cost: ", cost)

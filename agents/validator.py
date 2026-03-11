@@ -55,7 +55,7 @@ class Validator:
         self.voting_power += delegator.stake
         self.dcount += 1
 
-    def update_reward(self, reward, total_reward):
+    def update_reward(self, reward):
         self.overall_rewards += reward
 
         # in case of pool -> + commission
