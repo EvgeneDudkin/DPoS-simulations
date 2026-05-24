@@ -85,7 +85,7 @@ class Metrics:
 
         return snap
 
-    def report_if_needed(self, world, round_index):
+    def report_if_needed(self, world, round_index, print_output):
         if round_index % self.print_frequency != 0:
             return
         pool_ids = {v.id for v in world.pools()}
@@ -99,28 +99,30 @@ class Metrics:
         pools_top10_vp = sorted(pool_stats.items(), key=lambda x: x[1]["voting_power"], reverse=True)[:10]
         pools_top10_net_flow = sorted(pool_stats.items(), key=lambda x: x[1]["net_flow"], reverse=True)[:10]
 
-        print("=== METRICS ===")
-        print(f"Round: {snap['round']}")
-        print(f"Total VP: {snap['total_voting_power']:.6f}")
-        print(f"Top VP share (all): ", ", ".join([f"{vid}:{vp:.3f}" for vid, vp in snap["all_top_vp"]]))
-        print(f"Pending migrations: {snap['pending_migrations']}")
-        print(f"Confirm rate (last window): {snap['window_confirm_rate']:.3f}")
-        print(f"Rewards distributed (last window): {snap['window_rewards']:.6f}")
-        print(f"Migrations executed (last window): {snap['window_migrations_executed']}")
-        print(f"Top validator gains in terms of delegators (last window): {snap['top_gainers']}")
-        print(f"Top validator losses in terms of delegators (last window): {snap['top_losers']}")
-        print(f"Migration rate: {snap['migration_rate']}")
-        print(f"Top10 window rewards (all):  ",  ", ".join([f"{vid}:{amt:.6f}" for vid, amt in sorted(snap["reward_delta_by_id"].items(), key=lambda x: x[1], reverse=True)[:10]]))
-        print(f"Top10 window rewards (pools):  ",  ", ".join([f"{vid}:{amt:.6f}" for vid, amt in sorted([(vid, delta) for vid, delta in snap["reward_delta_by_id"].items() if vid in pool_ids], key=lambda x: x[1], reverse=True)[:10]]))
-        # pools stats
-        print("Top10 APR (pools):", ", ".join([f"{pid}:{st['apr']:.6f}" for pid, st in pools_top10_apr]))
-        print("Top10 VP (pools):", ", ".join([f"{pid}:{st['voting_power']:.3f}" for pid, st in pools_top10_vp]))
-        print("Top10 reward delta (pools):",
-              ", ".join([f"{pid}:{st['reward_delta']:.6f}" for pid, st in pools_top10_rewards]))
-        print("Top10 delegators (pools):", ", ".join([f"{pid}:{st['delegators']}" for pid, st in pools_top10_delegators]))
-        print("Top10 net flow (pools):", ", ".join([f"{pid}:{st['net_flow']}" for pid, st in pools_top10_net_flow]))
+        if print_output:
+            print("=== METRICS ===")
+            print(f"Round: {snap['round']}")
+            print(f"Total VP: {snap['total_voting_power']:.6f}")
+            print(f"Top VP share (all): ", ", ".join([f"{vid}:{vp:.3f}" for vid, vp in snap["all_top_vp"]]))
+            print(f"Pending migrations: {snap['pending_migrations']}")
+            print(f"Confirm rate (last window): {snap['window_confirm_rate']:.3f}")
+            print(f"Rewards distributed (last window): {snap['window_rewards']:.6f}")
+            print(f"Migrations executed (last window): {snap['window_migrations_executed']}")
+            print(f"Top validator gains in terms of delegators (last window): {snap['top_gainers']}")
+            print(f"Top validator losses in terms of delegators (last window): {snap['top_losers']}")
+            print(f"Migration rate: {snap['migration_rate']}")
+            print(f"Top10 window rewards (all):  ",  ", ".join([f"{vid}:{amt:.6f}" for vid, amt in sorted(snap["reward_delta_by_id"].items(), key=lambda x: x[1], reverse=True)[:10]]))
+            print(f"Top10 window rewards (pools):  ",  ", ".join([f"{vid}:{amt:.6f}" for vid, amt in sorted([(vid, delta) for vid, delta in snap["reward_delta_by_id"].items() if vid in pool_ids], key=lambda x: x[1], reverse=True)[:10]]))
+            # pools stats
+            print("Top10 APR (pools):", ", ".join([f"{pid}:{st['apr']:.6f}" for pid, st in pools_top10_apr]))
+            print("Top10 score (pools):", ", ".join([f"{pid}:{st['score']:.4f}" for pid, st in sorted(pool_stats.items(), key=lambda x: x[1]['score'], reverse=True)[:10]]))
+            print("Top10 VP (pools):", ", ".join([f"{pid}:{st['voting_power']:.3f}" for pid, st in pools_top10_vp]))
+            print("Top10 reward delta (pools):",
+                  ", ".join([f"{pid}:{st['reward_delta']:.6f}" for pid, st in pools_top10_rewards]))
+            print("Top10 delegators (pools):", ", ".join([f"{pid}:{st['delegators']}" for pid, st in pools_top10_delegators]))
+            print("Top10 net flow (pools):", ", ".join([f"{pid}:{st['net_flow']}" for pid, st in pools_top10_net_flow]))
 
-        print("===============")
+            print("===============")
 
         # reset window counters
         self.window_rounds = 0
@@ -137,6 +139,8 @@ class Metrics:
             vp = v.voting_power
             pool_stats[v.id] = {
                 "apr": round(v.apr, 5),
+                "delegator_apr": round(v.delegator_apr, 5),  # net APR after commission
+                "score": round(v.score, 5),                  # uptime/reliability in [0,1]
                 "voting_power": vp,
                 "delegators": v.dcount,
                 "reward_delta": reward_delta_by_id.get(v.id, 0.0),

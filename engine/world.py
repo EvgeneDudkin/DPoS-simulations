@@ -7,7 +7,8 @@ class World:
 
         self.blockchain = []
         self.round_index = 0
-        self.pending_migrations = []  # list of dicts
+        self.pending_migrations = []          # list of dicts — ordered queue
+        self._pending_delegator_set = set()   # O(1) membership test: "does this delegator already have a pending migration?"
 
     def pools(self):
         """Validators that are eligible to receive delegations."""
@@ -20,6 +21,7 @@ class World:
             "to": to_validator,
             "execute_round": execute_round
         })
+        self._pending_delegator_set.add(id(delegator))
 
     def process_migrations(self, current_round):
         """
@@ -50,4 +52,6 @@ class World:
                 remaining.append(m)
 
         self.pending_migrations = remaining
+        # Rebuild the fast-lookup set from remaining entries only
+        self._pending_delegator_set = {id(m["delegator"]) for m in remaining}
         return executed

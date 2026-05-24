@@ -5,7 +5,6 @@ from engine.world import World  # adjust import if your World lives elsewhere
 from agents.validator import Validator
 from agents.delegator import Delegator
 
-
 # We use a Dirichlet-style distribution (via Gamma draws + normalization)
 # to generate validator self-stake shares.
 #
@@ -92,7 +91,7 @@ def _lognormal_stakes(total, n, mu=-2.0, sigma=1.0):
 def initialize_world(
         *,
         num_validators: int,
-        num_pools: int,
+        pools_voting_powers: list[float],
         num_delegators: int,
         setup,
         reward_per_round: float,
@@ -125,29 +124,31 @@ def initialize_world(
     """
     if not (0.0 < validator_frac < 1.0):
         raise ValueError("validator_frac must be between 0 and 1 (exclusive).")
-    if num_pools > num_validators:
+    if len(pools_voting_powers) > num_validators:
         raise ValueError("num_pools cannot exceed num_validators.")
-    if num_pools <= 0:
+    if len(pools_voting_powers) <= 0:
         raise ValueError("num_pools must be >= 1.")
 
-    total_stake = 1.0 - byzantine_validator_stake - victim_pool_stake
+    total_stake = 1.0 - byzantine_validator_stake - victim_pool_stake - sum(pools_voting_powers)
     validators_total = total_stake * validator_frac
     delegators_total = total_stake - validators_total
 
     # validator self-bonds (capped)
     v_stakes = _get_shares(validators_total, num_validators, max_validator_stake,
                            alpha=1.0) if validators_stake_dirichlet_distributed else [validators_total / (num_validators)] * num_validators
-
     validators = []
-    for i in range(num_validators):
-        is_pool = (i < num_pools)  # simplest: first num_pools are pools
-        commission_rate = pool_commission_rate if is_pool else 0.0
+    for index, p_voting_power in enumerate(pools_voting_powers):
+        pool_id = f"Pool_{index}"
         validators.append(
-            Validator(i, v_stakes[i], is_pool=is_pool, apr_window=apr_window, commission_rate=commission_rate))
+            Validator(pool_id, p_voting_power, is_pool=True, apr_window=apr_window, commission_rate=pool_commission_rate))
+
+    for i in range(num_validators):
+        validators.append(
+            Validator(f"Validator_{i}", v_stakes[i], is_pool=False, apr_window=apr_window, commission_rate=0.0))
 
     victims = []
     if victim_pool_stake > 0.0:
-        victim = Validator(num_validators, victim_pool_stake, is_pool=True, apr_window=apr_window,
+        victim = Validator('Victim', victim_pool_stake, is_pool=True, apr_window=apr_window,
                            commission_rate=pool_commission_rate)
         validators.append(victim)
         victims.append(victim)
@@ -158,7 +159,7 @@ def initialize_world(
         # if aggregators_number = 0 -> aggregation is not included -> leader = aggregator -> prob. = 1 (probability of omission attack)
         prob_to_control_aggregator = 1 - (1 - aggregators_number / number_of_nodes) ** (
                     byzantine_validator_stake * number_of_nodes) if aggregators_number > 0 else 1.0
-        validators.append(Byzantine(num_validators + 1, byzantine_validator_stake, apr_window, victims,
+        validators.append(Byzantine('Attacker', byzantine_validator_stake, apr_window, victims,
                                     vote_omission_attack_on, vote_delay_attack_on, prob_to_control_aggregator))
 
     # delegator stakes (heavy-tailed, normalized)
@@ -178,7 +179,7 @@ def initialize_world(
         # personal threshold: large ones tolerate small differences (higher threshold), small ones are more "nervous"
         # + a small noise level (log-normal)
         noise = random.lognormvariate(mu=0.0, sigma=0.15)  # ~ +/- 15%
-        personal_threshold = 0.0035 * (1.0 + 0.35 * math.log1p(stake_factor)) * noise
+        personal_threshold = 0.002 * (1.0 + 0.35 * math.log1p(stake_factor)) * noise # 0.002 - calibrated value. Too high - no migration, to low - chaotic market  
 
         # personal streak: large ones + loyal wait longer
         personal_streak = int(base_streak * (1.0 + 0.35 * math.log1p(stake_factor)))

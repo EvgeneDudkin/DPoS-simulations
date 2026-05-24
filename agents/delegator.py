@@ -30,30 +30,43 @@ class Delegator:
 
     def choose_validator_by_apr(self, pool):
         """
-        Choose based on APR:
-        - stay unless best APR exceeds current APR by more than threshold
-        - even if dissatisfied, switch only with probability (1 - loyalty)
-        - when switching, choose among pools weighted by APR^aggressiveness
+        Migration decision uses raw delegator_apr gap; pool selection uses composite quality.
+
+        Separation of concerns:
+          - DECISION (should I leave?): based on delegator_apr gap only.
+            Rationale: delegator_apr already reflects actual earned rewards — it is the
+            EMA of realized per-round return. Using composite (apr * score) for the
+            threshold would double-count the attack effect: the victim's APR already
+            dropped because it missed attester rewards; multiplying by score<1 again
+            amplifies the gap far beyond what delegators actually observe in earnings.
+          - SELECTION (where to go?): _pick_logit uses delegator_apr * score as utility.
+            Once a delegator decides to move, it prefers pools with both high APR and
+            high reliability — consistent with how block-explorer dashboards display
+            validator quality (yield × uptime effectiveness).
+
+        Two-path asymmetric flow model (Sirri & Tufano 1998):
+          PATH 1 — PULL (fast): fires probabilistically when APR gap > star_threshold.
+          PATH 2 — PUSH (slow): streak-based flee from underperformer.
         """
-        # If not delegated yet, pick a pool biased by APR
+        r = random.random()
         if self.bounded_validator is None:
             return self._pick_logit(pool, current=None)
 
         current = self.bounded_validator
-        current_apr = current.apr
+        current_apr = current.delegator_apr
 
-        # Find the best APR pool
-        best = max(pool, key=lambda v: v.apr)
-        best_apr = best.apr
+        # Best pool by raw APR (decision signal — what delegators observe as earnings)
+        best = max(pool, key=lambda v: v.delegator_apr)
+        best_apr = best.delegator_apr
         gap = best_apr - current_apr
 
         # PATH 1 — PULL: fast attraction to star performers.
-        # Fires probabilistically each round when a large gap exists.
+        # Fires probabilistically each round when a large APR gap exists.
         # Models the convex upper tail of flow-performance relationship
         # (Sirri & Tufano 1998: top performers attract disproportionate inflows).
         if self.pull_prob > 0.0:
             star_threshold = self.apr_gap_threshold * self.star_gap_multiplier
-            if gap > star_threshold and random.random() < self.pull_prob:
+            if gap > star_threshold and r < self.pull_prob:
                 return self._pick_logit(pool, current=current)
 
         # PATH 2 — PUSH: slow flee of underperformer.
@@ -63,34 +76,36 @@ class Delegator:
             self.dissatisfied_streak = 0
             return current
 
-        #  not enough rounds
         if self.dissatisfied_streak < self.streak_required:
             return current
 
         # Inertia: not everyone switches immediately
-        if random.random() < self.loyalty:
+        if r < self.loyalty:
             return current
 
-        # Switch, but not always deterministically to the best
         return self._pick_logit(pool, current=current)
 
     def _pick_logit(self, pool, current=None):
-        # utility = apr; can be extended further: apr - fee - risk - switching_cost
-        # added switching_cost for race with small profit
+        """
+        Multinomial logit pool selection using composite quality as utility.
+
+        utility[i] = delegator_apr[i] * score[i]
+
+        The composite delegator_apr * score is the risk-adjusted net yield:
+        - delegator_apr: net APR after commission (what delegators actually receive)
+        - score: uptime/reliability ∈ [0,1]; a validator often excluded from
+          selected_voters has a lower score → its utility is discounted accordingly.
+
+        """
         eps = 1e-12
         beta = max(1e-6, float(self.aggressiveness))
 
-        # switching_cost: more stake - more expensive to switch
-        switching_cost = 0.0005 * (1.0 + 0.5 * math.log1p(self.stake * 1e4))
-
         utilities = []
         for v in pool:
-            u = max(v.apr, 0.0)
-            if current is not None and v != current:
-                u -= switching_cost
+            u = max(v.delegator_apr * v.score, 0.0)   # risk-adjusted net quality
             utilities.append(u)
 
-        # logit weights
+        # logit weights: exp(β * (u - max_u)) for numerical stability
         m = max(utilities) if utilities else 0.0
         weights = [math.exp(beta * (u - m)) + eps for u in utilities]
 

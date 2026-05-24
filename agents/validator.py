@@ -11,18 +11,23 @@ class Validator:
         self.proposed_blocks = []
         self.delegators = {}
         self.voting_power = self.stake
-        self.score = 1000 # Validator score indicates chances of being selected by a delegator. Default everyone is 1000.
         self.count = 0 # Number of times the validator was in the committee
         self.dcount = 0 # total number of delegators
         # rewards
         self.overall_rewards = 0 # reward for all voting power
         self.total_reward = 0
         self._apr_window = apr_window
-        # self._rewards_window  = deque(maxlen=apr_window)
-        # self._vp_window  = deque(maxlen=apr_window)
+        self._alpha_ema = 2.0 / (apr_window + 1.0)   # precomputed once; shared by APR and uptime EMA
         self._last_overall_rewards = 0.0
-        self.apr = 0.0
+        self.apr = 0.0             # gross APR (before commission deduction)
+        self.delegator_apr = 0.0   # net APR that delegators actually earn (after commission)
         self._ema_return = 0.0
+        # reliability / uptime score: EMA participation rate in [0, 1].
+        # Tracks fraction of rounds where this validator's signature was included
+        # in the confirmed selected_voters set. 1.0 = fully reliable, 0.0 = always offline.
+        # Starts at 1.0 to give validators benefit-of-the-doubt during warm-up.
+        self.score = 1.0
+        self._ema_uptime = 1.0
 
     def propose(self, committee):
         r = random.randint(0, 100)
@@ -74,51 +79,55 @@ class Validator:
                 share = (delegator.stake / self.voting_power) * distributable
                 delegator.update_reward(share)
 
-    # def update_apr(self, rounds_per_year):
-    #     # delta rewards since last time we updated APR
-    #     delta = self.overall_rewards - self._last_overall_rewards
-    #     self._last_overall_rewards = self.overall_rewards
-    #
-    #     self._rewards_window.append(delta)
-    #     self._vp_window.append(self.voting_power)
-    #
-    #     if len(self._vp_window) == 0:
-    #         self.apr = 0.0
-    #         return self.apr
-    #
-    #     avg_vp = sum(self._vp_window) / len(self._vp_window)
-    #     if avg_vp <= 0:
-    #         self.apr = 0.0
-    #         return self.apr
-    #
-    #     window_rewards = sum(self._rewards_window)
-    #     window_rounds = len(self._rewards_window)
-    #
-    #     # annualize per-round return
-    #     self.apr = (window_rewards / avg_vp) * (rounds_per_year / window_rounds)
-    #     return self.apr
-
     def update_apr(self, rounds_per_year):
-        # delta rewards since last time we updated APR
+        """
+        EMA-smoothed APR over a rolling window of apr_window rounds.
+
+        APR validation notes (real-world alignment):
+        - `delta / vp` is the per-round gross return per unit of voting power,
+          equivalent to what on-chain staking dashboards compute:
+          (rewards_in_window / total_stake) * (rounds_per_year / window_rounds).
+        - EMA with alpha = 2/(window+1) gives a half-life of ~window/2 rounds,
+          appropriate for a 7-day smoothing window (apr_window=1575 Ethereum epochs).
+        - `delegator_apr` subtracts the commission taken by the pool operator,
+          matching what real liquid-staking platforms (Lido, Cosmos validators)
+          display to delegators. Delegators use this signal, not the gross APR.
+        """
         delta = self.overall_rewards - self._last_overall_rewards
         self._last_overall_rewards = self.overall_rewards
 
         vp = self.voting_power
         if vp <= 0:
             self.apr = 0.0
+            self.delegator_apr = 0.0
             return self.apr
 
-        # per-round return (at the moment)
-        r = delta / vp
+        r = delta / vp                                    # gross per-round return per VP unit
+        self._ema_return = (1.0 - self._alpha_ema) * self._ema_return + self._alpha_ema * r
 
-        # EMA smoothing ~ "APR over window"
-        # alpha_ema: bigger window - slower reaction
-        alpha_ema = 2.0 / (self._apr_window + 1.0)
-
-        self._ema_return = (1.0 - alpha_ema) * self._ema_return + alpha_ema * r
-
-        self.apr = self._ema_return * rounds_per_year
+        self.apr = self._ema_return * rounds_per_year     # gross annualized APR
+        self.delegator_apr = self.apr * (1.0 - self.commission_rate)  # net APR delegators compare
         return self.apr
+
+    def update_uptime(self, signed: bool):
+        """
+        EMA update of participation rate (reliability score).
+
+        Called every round with signed=True when this validator's signature was
+        included in committee.selected_voters, False otherwise.
+
+        Uses the same EMA window as APR for consistency. Equivalent to the
+        uptime metric tracked by real DPoS networks (e.g., Cosmos slashing module
+        tracks signed-blocks / total-blocks over a sliding window and jails
+        validators whose uptime drops below 5%).
+
+        score ∈ [0, 1]:  1.0 = always participates, 0.0 = never participates.
+        Under a vote-omission attack the victim's score drops because the Byzantine
+        proposer excludes its signature — the same observable effect delegators see
+        when monitoring block explorers.
+        """
+        self._ema_uptime = (1.0 - self._alpha_ema) * self._ema_uptime + self._alpha_ema * (1.0 if signed else 0.0)
+        self.score = self._ema_uptime
 
 
     def vote_for_leader(self, leader):

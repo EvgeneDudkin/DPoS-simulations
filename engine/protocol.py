@@ -22,23 +22,11 @@ class Protocol:
             committee,
             reward_amount=self.world.reward)
 
-    def calculate_validators_scores(self):
-        #total = 0
-        #for validator in self.validators:
-            #total+= validator.totalReward
-        total_rewards = sum(validator.total_reward for validator in self.world.validators)
-        total_stake = sum(validator.voting_power for validator in self.world.validators)
-        for validator in self.world.validators:
-            if validator.count == 0:
-                validator.score = 10000000
-            else:
-                validator.score = ((validator.total_reward / total_rewards) / (validator.voting_power * validator.count)) * 10000000
-
     def update_delegations(self):
         pool = self.world.pools()
         for delegator in self.world.delegators:
-            # If already waiting to migrate, skip decisions
-            if any(m["delegator"] == delegator for m in self.world.pending_migrations):
+            # If already waiting to migrate, skip decisions — O(1) set lookup
+            if id(delegator) in self.world._pending_delegator_set:
                 continue
 
             old = delegator.bounded_validator
@@ -67,6 +55,15 @@ class Protocol:
             committee = self.select_committee()
             self.metrics.on_block_attempt()
             new_block = committee.round()
+
+            # Update uptime score for every validator every round, regardless of
+            # block confirmation. signed=True iff the validator's signature was
+            # included in the proposer's selected_voters set. Under a vote-omission
+            # attack the victim is excluded here even though it voted → score drops.
+            signed_ids = {id(v) for v in committee.selected_voters}
+            for v in self.world.validators:
+                v.update_uptime(id(v) in signed_ids)
+
             if new_block is not None:
                 self.world.blockchain.append(new_block)
                 self.metrics.on_block_confirmed()
@@ -77,7 +74,4 @@ class Protocol:
                 for v in self.world.validators:
                     v.update_apr(self.rounds_per_year)
 
-                self.calculate_validators_scores()
-
-            if self.verbose:
-                self.metrics.report_if_needed(self.world, i)
+            self.metrics.report_if_needed(self.world, i, self.verbose)
