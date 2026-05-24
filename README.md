@@ -11,7 +11,7 @@ The hypothesis is that attacks targeting a competitor's staking pool degrade tha
 The framework is an **agent-based model (ABM)** built around two attack types:
 
 - **Vote Omission**: the Byzantine proposer filters the victim validator's signature out of the block, denying it rewards and dropping its uptime score.
-- **Vote Delay**: the Byzantine validator withholds its vote when the victim is the proposer, reducing the victim's block confirmation rate.
+- **Vote Delay**: the Byzantine validator withholds its vote when the victim is the proposer, reducing the victim's leader reward-bonus 
 
 Both attacks are modeled against two protocol configurations — **Cosmos** and **Ethereum** (with Lido and Rocket Pool commission structures) — and results are compared against analytical formulas from Baloochestani & Jehl (2025).
 
@@ -23,10 +23,10 @@ Both attacks are modeled against two protocol configurations — **Cosmos** and 
 
 | Tool | Version / Notes |
 |------|----------------|
-| Python | 3.10 or higher |
+| Python | 3.13.9 or higher |
 | pip | bundled with Python |
 | Git | any recent version |
-| VS Code | recommended (1.85+); any editor works |
+| VS Code | recommended (1.119+) |
 
 **Python packages** (installed via pip — see Installation):
 
@@ -38,7 +38,7 @@ Both attacks are modeled against two protocol configurations — **Cosmos** and 
 1. **Clone the repository**
 
    ```bash
-   git clone https://github.com/<your-username>/DPoS-simulations.git
+   git clone https://github.com/EvgeneDudkin/DPoS-simulations.git
    cd DPoS-simulations
    ```
 
@@ -102,6 +102,8 @@ loyalty           = 0.8    # inertia (0 = always migrate, 1 = never migrate)
 pull_prob         = 0.03   # star-chasing probability per round
 ```
 
+Other parameters (market-related parameters, world configuration, competetive pools configuration and many others) can also be changed / modified / adjusted. For that the knowldege about the system and framework inderstanding is needed.
+
 ### Generated outputs
 
 | File | Description |
@@ -134,4 +136,5 @@ engine/      — Protocol loop, World state, Initializer, Metrics, Plots
 setups/      — Pluggable strategies: committee, proposer, vote, reward policies
 model/       — Block and Committee data structures
 main.py      — Entry point and protocol configuration functions
+docs/        — Architecture / design / docs 
 ```
